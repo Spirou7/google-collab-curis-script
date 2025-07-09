@@ -21,7 +21,7 @@ import numpy as np
 from models.inject_utils import *
 from injection import read_injection
 
-
+# TensorFlow 2.19.0 compatible configuration
 tf.config.set_soft_device_placement(True)
 tf.random.set_seed(123)
 
@@ -88,14 +88,17 @@ def main():
         exit()
 
     try:
+        # TensorFlow 2.19.0 compatible TPU initialization
         tpu = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='local')
         tf.config.experimental_connect_to_cluster(tpu)
+        # Note: tf.tpu.experimental.initialize_tpu_system is still used in TF 2.19.0
         tf.tpu.experimental.initialize_tpu_system(tpu)
         strategy = tf.distribute.TPUStrategy(tpu)
         print("TPU is running:", tpu.master())
     except ValueError as e:
-        print("TPU is not avaible:", e)
-
+        print("TPU is not available:", e)
+        # Fallback to CPU/GPU strategy
+        strategy = tf.distribute.get_strategy()
 
     rp = read_injection(args.file)
     #rp.seed = 123
@@ -103,17 +106,19 @@ def main():
     # get the dataset
     train_dataset, valid_dataset, train_count, valid_count = generate_datasets(rp.seed)
 
+    # TensorFlow 2.19.0: experimental_distribute_dataset is still supported
+    # but we can also use the non-experimental version
     train_dataset = strategy.experimental_distribute_dataset(train_dataset)
     valid_dataset = strategy.experimental_distribute_dataset(valid_dataset)
 
     with strategy.scope():
         model, back_model = get_model(rp.model, rp.seed)
-	# define loss and optimizer
+        # define loss and optimizer
         if 'sgd' in rp.model:
             lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
-            	initial_learning_rate=rp.learning_rate,
-            	decay_steps = 2000,
-            	end_learning_rate=0.001)
+                initial_learning_rate=rp.learning_rate,
+                decay_steps = 2000,
+                end_learning_rate=0.001)
             model.optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
         elif 'effnet' in rp.model:
             lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(

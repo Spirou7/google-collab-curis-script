@@ -6,6 +6,11 @@ from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.utils import to_categorical
 import numpy as np
 
+# TensorFlow 2.19.0 Compatibility:
+# - tf.data APIs are stable and fully supported in TF 2.19.0
+# - tf.keras.datasets.cifar10 and tf.keras.utils remain unchanged
+# - All data preprocessing functions are compatible with TF 2.19.0
+
 def load_and_preprocess_image(img_path):
     # read pictures
     img_raw = tf.io.read_file(img_path)
