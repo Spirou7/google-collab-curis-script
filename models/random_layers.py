@@ -21,7 +21,7 @@ import numpy as np
 from tensorflow.keras import backend
 from tensorflow.keras.layers import Layer as base_layer
 from tensorflow.keras.preprocessing import image as image_preprocessing
-from tensorflow.keras.utils import control_flow_util
+# TensorFlow 2.19.0: control_flow_util is no longer available, use tf.cond instead
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.util.tf_export import keras_export
 
@@ -127,11 +127,12 @@ class MyRandomCrop(base_layer.Layer):
       input_width_t = input_shape[W_AXIS]
       ratio_cond = (input_height_t / input_width_t > (self.height / self.width))
       # pylint: disable=g-long-lambda
-      resized_height = control_flow_util.smart_cond(
+      # TensorFlow 2.19.0: Use tf.cond instead of control_flow_util.smart_cond
+      resized_height = tf.cond(
           ratio_cond,
           lambda: tf.cast(self.width * input_height_t / input_width_t,
                           input_height_t.dtype), lambda: self.height)
-      resized_width = control_flow_util.smart_cond(
+      resized_width = tf.cond(
           ratio_cond, lambda: self.width,
           lambda: tf.cast(self.height * input_width_t / input_height_t,
                           input_width_t.dtype))
@@ -152,8 +153,9 @@ class MyRandomCrop(base_layer.Layer):
       outputs = tf.slice(resized_inputs, bbox_begin, bbox_size)
       return outputs
 
-    output = control_flow_util.smart_cond(training, random_cropped_inputs,
-                                          resize_and_center_cropped_inputs)
+    # TensorFlow 2.19.0: Use tf.cond instead of control_flow_util.smart_cond
+    output = tf.cond(training, random_cropped_inputs,
+                     resize_and_center_cropped_inputs)
     input_shape = inputs.shape.as_list()
     if unbatched:
       output_shape = [self.height, self.width, input_shape[-1]]
@@ -244,8 +246,9 @@ class MyRandomFlip(base_layer.Layer):
             self._rng.make_seeds()[:, 0])
       return flipped_outputs
 
-    output = control_flow_util.smart_cond(training, random_flipped_inputs,
-                                          lambda: inputs)
+    # TensorFlow 2.19.0: Use tf.cond instead of control_flow_util.smart_cond
+    output = tf.cond(training, random_flipped_inputs,
+                     lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -357,8 +360,9 @@ class MyRandomRotation(base_layer.Layer):
           fill_value=self.fill_value,
           interpolation=self.interpolation)
 
-    output = control_flow_util.smart_cond(training, random_rotated_inputs,
-                                          lambda: inputs)
+    # TensorFlow 2.19.0: Use tf.cond instead of control_flow_util.smart_cond
+    output = tf.cond(training, random_rotated_inputs,
+                     lambda: inputs)
     if unbatched:
       output = tf.squeeze(output, 0)
     output.set_shape(original_shape)
