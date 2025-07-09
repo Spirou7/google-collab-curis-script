@@ -9,7 +9,7 @@ certifi==2021.10.8
 chardet==3.0.4
 charset-normalizer==2.0.7
 Click==7.0
-cloud-init==21.4
+#cloud-init==21.4
 cloud-tpu-client==0.10
 colorama==0.4.3
 command-not-found==0.3
