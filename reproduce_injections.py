@@ -87,18 +87,15 @@ def main():
     if args is None:
         exit()
 
+    
     try:
-        # TensorFlow 2.19.0 compatible TPU initialization
         tpu = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='local')
         tf.config.experimental_connect_to_cluster(tpu)
-        # Note: tf.tpu.experimental.initialize_tpu_system is still used in TF 2.19.0
         tf.tpu.experimental.initialize_tpu_system(tpu)
         strategy = tf.distribute.TPUStrategy(tpu)
         print("TPU is running:", tpu.master())
     except ValueError as e:
-        print("TPU is not available:", e)
-        # Fallback to CPU/GPU strategy
-        strategy = tf.distribute.get_strategy()
+        print("TPU is not avaible:", e)
 
     rp = read_injection(args.file)
     #rp.seed = 123
