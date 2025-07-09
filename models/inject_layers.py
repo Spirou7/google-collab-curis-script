@@ -437,6 +437,9 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                seed=None,
                l_name=None,
                **kwargs):
+        # Remove seed and l_name from kwargs if present
+        kwargs.pop('seed', None)
+        kwargs.pop('l_name', None)
         super(InjectConv2D, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
@@ -463,7 +466,7 @@ class InjectConv2D(tf.keras.layers.Conv2D):
             self.bias_layer = BiasLayer()
 
     def call(self, inputs, inject=None, inj_args=None):
-        is_target = (inj_args and inj_args.inj_layer == self.l_name)
+        is_target = (inj_args is not None and hasattr(inj_args, 'inj_layer') and inj_args.inj_layer == self.l_name)
 
         if not is_target:
             conv_out = super(InjectConv2D, self).call(inputs)
@@ -472,23 +475,23 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                 return super(InjectConv2D, self).call(inputs)
 
             def do_inj(inputs, inj_args):
-                if is_input_target(inj_args.inj_type):
+                if inj_args is not None and hasattr(inj_args, 'inj_type') and is_input_target(inj_args.inj_type):
                     inputs = inj_to_tensor(inputs, inj_args)
-                if is_weight_target(inj_args.inj_type):
+                if inj_args is not None and hasattr(inj_args, 'inj_type') and is_weight_target(inj_args.inj_type) and hasattr(inj_args, 'golden_weights'):
                     modified_wts = [inj_to_tensor(None, inj_args)]
-                    for i in range(1,len(inj_args.golden_weights)):
+                    for i in range(1, len(inj_args.golden_weights)):
                         modified_wts.append(inj_args.golden_weights[i])
                     self.set_weights(modified_wts)
 
                 conv_out = super(InjectConv2D, self).call(inputs)
 
                 # Set weights back
-                if is_weight_target(inj_args.inj_type):
+                if inj_args is not None and hasattr(inj_args, 'inj_type') and is_weight_target(inj_args.inj_type) and hasattr(inj_args, 'golden_weights'):
                     self.set_weights(inj_args.golden_weights)
 
                 if is_target:
                     # Inject to output
-                    if is_output_target(inj_args.inj_type):
+                    if inj_args is not None and hasattr(inj_args, 'inj_type') and is_output_target(inj_args.inj_type):
                         conv_out = inj_to_tensor(conv_out, inj_args)
 
                     # TODO: Correction for INPUT_16 and WT_16
@@ -521,14 +524,14 @@ class BackwardInjectConv2D(tf.keras.layers.Layer):
         bkwd_layer_outputs = {}
 
         is_target = False
-        if inj_args:
+        if inj_args is not None and hasattr(inj_args, 'inj_layer'):
             full_name = inj_args.inj_layer
             subs_pos = full_name.rfind('_')
             subs_pos = full_name.rfind('_', 0, subs_pos-1)
             layer_name = full_name[:subs_pos]
             is_target = (layer_name == self.l_name)
-        is_input_target = is_target and '_grad_in' in inj_args.inj_layer 
-        is_wt_target = is_target and '_grad_wt' in inj_args.inj_layer
+        is_input_target = is_target and inj_args is not None and hasattr(inj_args, 'inj_layer') and '_grad_in' in inj_args.inj_layer 
+        is_wt_target = is_target and inj_args is not None and hasattr(inj_args, 'inj_layer') and '_grad_wt' in inj_args.inj_layer
 
         if is_input_target:
             print("DEBUG: Start injecting error to bkwd input layer!")
@@ -539,8 +542,12 @@ class BackwardInjectConv2D(tf.keras.layers.Layer):
         fmt_wt = tf.transpose(tf_rot180(kernels), perm=[0,1,3,2])
         #print("manual grad for input input: {} {}".format(fmt_inp.shape, fmt_wt.shape))
 
-        bkwd_layer_inputs[self.l_name + '_grad_in'] = fmt_inp
-        bkwd_layer_kernels[self.l_name + '_grad_in'] = fmt_wt
+        if self.l_name is not None:
+            bkwd_layer_inputs[self.l_name + '_grad_in'] = fmt_inp
+            bkwd_layer_kernels[self.l_name + '_grad_in'] = fmt_wt
+        else:
+            bkwd_layer_inputs['grad_in'] = fmt_inp
+            bkwd_layer_kernels['grad_in'] = fmt_wt
 
         if not is_input_target:
             manual_grad_in = tf.nn.conv2d(fmt_inp, fmt_wt, strides=[1,1,1,1], padding="VALID")
@@ -552,7 +559,10 @@ class BackwardInjectConv2D(tf.keras.layers.Layer):
 
             manual_grad_in = tf.cond(tf.reduce_all(inject), lambda: input_inj(fmt_inp, fmt_wt, inj_args), lambda: no_input_inj(fmt_inp, fmt_wt))
 
-        bkwd_layer_outputs[self.l_name + '_grad_in'] = manual_grad_in
+        if self.l_name is not None:
+            bkwd_layer_outputs[self.l_name + '_grad_in'] = manual_grad_in
+        else:
+            bkwd_layer_outputs['grad_in'] = manual_grad_in
         #print("Manual grad for input {}".format(manual_grad_in.shape))
 
         ####################
@@ -567,8 +577,12 @@ class BackwardInjectConv2D(tf.keras.layers.Layer):
         fmt_inp = tf.transpose(tf_pad_to_full_conv2d(inputs, self.kernel_size, self.padding, is_input=False), perm=[3,1,2,0])
         fmt_wt = tf_NHWC_to_HWIO(grad_out if self.strides == 1 else tf_pad_with_stride(grad_out, self.strides, self.kernel_size, self.padding))
         #print("manual grad for weight input: {} {}".format(fmt_inp.shape, fmt_wt.shape))
-        bkwd_layer_inputs[self.l_name + '_grad_wt'] = fmt_inp
-        bkwd_layer_kernels[self.l_name + '_grad_wt'] = fmt_wt
+        if self.l_name is not None:
+            bkwd_layer_inputs[self.l_name + '_grad_wt'] = fmt_inp
+            bkwd_layer_kernels[self.l_name + '_grad_wt'] = fmt_wt
+        else:
+            bkwd_layer_inputs['grad_wt'] = fmt_inp
+            bkwd_layer_kernels['grad_wt'] = fmt_wt
         
         if not is_wt_target:
             manual_direct_grad_wt = tf.nn.conv2d(fmt_inp, fmt_wt, strides=[1,1,1,1], padding="VALID")
@@ -581,7 +595,10 @@ class BackwardInjectConv2D(tf.keras.layers.Layer):
 
             manual_direct_grad_wt = tf.cond(tf.reduce_all(inject), lambda: wt_inj(fmt_inp, fmt_wt, inj_args), lambda: no_wt_inj(fmt_inp, fmt_wt))
 
-        bkwd_layer_outputs[self.l_name + '_grad_wt'] = manual_direct_grad_wt
+        if self.l_name is not None:
+            bkwd_layer_outputs[self.l_name + '_grad_wt'] = manual_direct_grad_wt
+        else:
+            bkwd_layer_outputs['grad_wt'] = manual_direct_grad_wt
         manual_grad_wt = tf_NHWC_to_HWIO(manual_direct_grad_wt)
 
         #print("Manual grad for weight {}".format(manual_grad_wt.shape))
