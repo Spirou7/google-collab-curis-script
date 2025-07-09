@@ -61,7 +61,7 @@ def check_fill_mode_and_interpolation(fill_mode, interpolation):
                               '`bilinear` are supported.'.format(interpolation))
 
 
-class MyRandomCrop(base_layer.Layer):
+class MyRandomCrop(base_layer):
   """Randomly crop the images to target height and width.
 
   This layer will crop all the images in the same batch to the same cropping
@@ -185,7 +185,7 @@ HORIZONTAL = 'horizontal'
 VERTICAL = 'vertical'
 HORIZONTAL_AND_VERTICAL = 'horizontal_and_vertical'
 
-class MyRandomFlip(base_layer.Layer):
+class MyRandomFlip(base_layer):
   """Randomly flip each image horizontally and vertically.
 
   This layer will flip the images based on the `mode` attribute.
@@ -264,7 +264,7 @@ class MyRandomFlip(base_layer.Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class MyRandomRotation(base_layer.Layer):
+class MyRandomRotation(base_layer):
   """Randomly rotate each image.
 
   By default, random rotations are only applied during training.
