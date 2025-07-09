@@ -437,31 +437,29 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                seed=None,
                l_name=None,
                **kwargs):
-        # Remove seed and l_name from kwargs if present
-        kwargs.pop('seed', None)
-        kwargs.pop('l_name', None)
+        # Ensure 'seed' and 'l_name' are not passed to the parent class
+        if 'seed' in kwargs: del kwargs['seed']
+        if 'l_name' in kwargs: del kwargs['l_name']
         super(InjectConv2D, self).__init__(
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        dilation_rate=dilation_rate,
-        groups=groups,
-        activation=activation,
-        use_bias=False,
-        #kernel_initializer=kernel_initializer,
-        kernel_initializer=tf.keras.initializers.GlorotNormal(seed=seed),
-        bias_initializer=bias_initializer,
-        kernel_regularizer=kernel_regularizer,
-        bias_regularizer=bias_regularizer,
-        activity_regularizer=activity_regularizer,
-        kernel_constraint=kernel_constraint,
-        bias_constraint=bias_constraint,
-        **kwargs)
+            filters=filters,
+            kernel_size=kernel_size,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+            dilation_rate=dilation_rate,
+            groups=groups,
+            activation=activation,
+            use_bias=False,
+            kernel_initializer=tf.keras.initializers.GlorotNormal(seed=seed),
+            bias_initializer=bias_initializer,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            bias_constraint=bias_constraint,
+            **kwargs)
         self.l_name = l_name
         self.has_bias = use_bias
-
         if self.has_bias:
             self.bias_layer = BiasLayer()
 
