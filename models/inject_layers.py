@@ -435,11 +435,7 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                kernel_constraint=None,
                bias_constraint=None,
                seed=None,
-               l_name=None,
-               **kwargs):
-        # Ensure 'seed' and 'l_name' are not passed to the parent class
-        if 'seed' in kwargs: del kwargs['seed']
-        if 'l_name' in kwargs: del kwargs['l_name']
+               l_name=None):
         super(InjectConv2D, self).__init__(
             filters=filters,
             kernel_size=kernel_size,
@@ -456,8 +452,7 @@ class InjectConv2D(tf.keras.layers.Conv2D):
             bias_regularizer=bias_regularizer,
             activity_regularizer=activity_regularizer,
             kernel_constraint=kernel_constraint,
-            bias_constraint=bias_constraint,
-            **kwargs)
+            bias_constraint=bias_constraint)
         self.l_name = l_name
         self.has_bias = use_bias
         if self.has_bias:
