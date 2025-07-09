@@ -17,7 +17,6 @@ class BasicBlock(tf.keras.layers.Layer):
                                             kernel_size=(3, 3),
                                             strides=stride,
                                             padding="same",
-                                            seed=seed,
                                             l_name=self.l_name + "_conv1")
         self.bn1 = InjectBatchNormalization(momentum=0.9)
         #self.dropout1 = tf.keras.layers.Dropout(rate=0.15, seed=seed)
@@ -27,7 +26,6 @@ class BasicBlock(tf.keras.layers.Layer):
                                             kernel_size=(3, 3),
                                             strides=1,
                                             padding="same",
-                                            seed=seed,
                                             l_name=self.l_name + "_conv2")
         self.bn2 = InjectBatchNormalization(momentum=0.9)
         #self.dropout2 = tf.keras.layers.Dropout(rate=0.15, seed=seed)
@@ -38,7 +36,6 @@ class BasicBlock(tf.keras.layers.Layer):
                                                 kernel_size=(1, 1),
                                                 strides=stride,
                                                 padding='same',
-                                                seed=seed,
                                                 l_name=self.l_name + "_downsample")
             self.bn3 = InjectBatchNormalization(momentum=0.9)
         else:
