@@ -19,8 +19,7 @@ import tensorflow.compat.v2 as tf
 import numpy as np
 # TensorFlow 2.19.0: Use tf.keras instead of standalone keras
 from tensorflow.keras import backend
-from tensorflow.keras.engine import base_layer
-from tensorflow.keras.engine import base_preprocessing_layer
+from tensorflow.keras.layers import Layer as base_layer
 from tensorflow.keras.preprocessing import image as image_preprocessing
 from tensorflow.keras.utils import control_flow_util
 from tensorflow.python.ops import stateless_random_ops
