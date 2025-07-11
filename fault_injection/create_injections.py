@@ -196,7 +196,7 @@ def get_rand_inj_constraints():
     
     total_elements = np.prod(shape)
     if total_elements == 0:
-        raise ValueError(f"Cannot inject into a tensor of size 0 for layer {inj.target_layer}")
+        raise ValueError("Cannot inject into a tensor of size 0 for layer {}".format(inj.target_layer))
 
     num_positions_to_generate = n_inj * n_repeat
     if total_elements < num_positions_to_generate:
