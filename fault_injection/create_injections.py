@@ -252,7 +252,7 @@ def main():
     valid_dataset = strategy.experimental_distribute_dataset(valid_dataset)
 
     with strategy.scope():
-        model, back_model = get_model(inj.model, inj.seed)
+        # model, back_model = get_model(inj.model, inj.seed)
         # define loss and optimizer
         if 'sgd' in inj.model:
             lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
