@@ -10,7 +10,7 @@ class Injection():
     target_step =  -1
     inj_pos = []
     inj_values = []
-    learning_rate = -1.0
+    learning_rate = -1
     seed = 123
 
 def get_array(string):
