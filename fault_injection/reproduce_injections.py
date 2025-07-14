@@ -167,6 +167,30 @@ def main():
             return l_inputs, l_kernels, l_outputs
         return strategy.run(step1_fn, args=(iter_inputs,))
 
+    def filter_tensors_only(layer_dict):
+        """Filter dictionary to only include tensor values, converting necessary scalars to tensors"""
+        import tensorflow as tf
+        filtered = {}
+        for key, value in layer_dict.items():
+            # Include if it's a tensor, distributed tensor, or list of tensors
+            if (hasattr(value, 'values') or  # Distributed tensor
+                isinstance(value, (list, tuple)) or  # List/tuple of tensors
+                tf.is_tensor(value) or  # Regular tensor
+                hasattr(value, 'dtype')):  # Any tensor-like object
+                
+                if isinstance(value, list):
+                    # Check if list contains tensors
+                    if value and (hasattr(value[0], 'values') or tf.is_tensor(value[0]) or hasattr(value[0], 'dtype')):
+                        filtered[key] = value
+                else:
+                    # Single tensor (distributed or regular)
+                    filtered[key] = value
+            # Convert epsilon values to tensors - they're needed for batch norm backward pass
+            elif 'epsilon' in key and isinstance(value, (int, float)):
+                filtered[key] = tf.constant(value, dtype=tf.float32)
+            # Skip other pure scalar values completely
+        return filtered
+    
     @tf.function
     def fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag):
         def step2_fn(inputs, inject):
@@ -179,7 +203,10 @@ def main():
                 avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
 
             man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
-            manual_gradients, _, _, _ = back_model(man_grad_start, layer_inputs=l_inputs, layer_kernels=l_kernels, inject=None, inj_args=None)
+            # Filter out non-tensor values before passing to back_model
+            filtered_inputs = filter_tensors_only(l_inputs)
+            filtered_kernels = filter_tensors_only(l_kernels)
+            manual_gradients, _, _, _ = back_model(man_grad_start, layer_inputs=filtered_inputs, layer_kernels=filtered_kernels, inject=None, inj_args=None)
 
             gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
@@ -201,7 +228,10 @@ def main():
                 loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
                 avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
             man_grad_start = tape.gradient(avg_loss, grad_start)
-            _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, layer_inputs=l_inputs, layer_kernels=l_kernels, inject=None, inj_args=None)
+            # Filter out non-tensor values before passing to back_model
+            filtered_inputs = filter_tensors_only(l_inputs)
+            filtered_kernels = filter_tensors_only(l_kernels)
+            _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, layer_inputs=filtered_inputs, layer_kernels=filtered_kernels, inject=None, inj_args=None)
             return bkwd_inputs, bkwd_kernels, bkwd_outputs
 
         return strategy.run(step1_fn, args=(iter_inputs,))
@@ -217,7 +247,10 @@ def main():
                 loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
                 avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
             man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
-            manual_gradients, _, _, _ = back_model(man_grad_start, layer_inputs=l_inputs, layer_kernels=l_kernels, inject=inject, inj_args=inj_args)
+            # Filter out non-tensor values before passing to back_model
+            filtered_inputs = filter_tensors_only(l_inputs)
+            filtered_kernels = filter_tensors_only(l_kernels)
+            manual_gradients, _, _, _ = back_model(man_grad_start, layer_inputs=filtered_inputs, layer_kernels=filtered_kernels, inject=inject, inj_args=inj_args)
 
             gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
