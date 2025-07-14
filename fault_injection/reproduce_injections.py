@@ -307,7 +307,7 @@ def main():
                 try:
                     inj_args, inj_flag = get_replay_args(InjType[rp.fmodel], rp, strategy, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder)
                 except Exception as e:
-                    print(f"ERROR in get_replay_args: {e}")
+                    # print(f"ERROR in get_replay_args: {e}")
                     print(f"Layer: {inj_layer}")
                     print(f"InjType: {rp.fmodel}")
                     exit(1)
