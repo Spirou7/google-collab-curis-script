@@ -179,7 +179,7 @@ def main():
                 avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
 
             man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
-            manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels)
+            manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels, inject=None, inj_args=None)
 
             gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
@@ -201,7 +201,7 @@ def main():
                 loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
                 avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
             man_grad_start = tape.gradient(avg_loss, grad_start)
-            _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, l_inputs, l_kernels)
+            _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, l_inputs, l_kernels, inject=None, inj_args=None)
             return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
 
         return strategy.run(step1_fn, args=(iter_inputs,))
