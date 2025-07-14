@@ -87,12 +87,16 @@ def main():
     if args is None:
         exit()
 
-    # TPU settings
-    tpu_name = os.getenv('TPU_NAME')
-    resolver = LocalTPUClusterResolver()
-    tf.tpu.experimental.initialize_tpu_system(resolver)
 
-    strategy = tf.distribute.TPUStrategy(resolver)
+    try:
+        tpu = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='local')
+        tf.config.experimental_connect_to_cluster(tpu)
+        tf.tpu.experimental.initialize_tpu_system(tpu)
+        strategy = tf.distribute.TPUStrategy(tpu)
+        print("TPU is running:", tpu.master())
+    except ValueError as e:
+        print("TPU is not avaible:", e)
+
     per_replica_batch_size = config.BATCH_SIZE // strategy.num_replicas_in_sync
     print("Finish TPU strategy setting!")
 
