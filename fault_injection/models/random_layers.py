@@ -85,6 +85,9 @@ class MyRandomCrop(Layer):
   def call(self, inputs, training=True):
     if training is None:
       training = tf.keras.backend.learning_phase()
+    
+    # Convert training to tensor boolean for TF 2.18.0 compatibility
+    training = tf.convert_to_tensor(training, dtype=tf.bool)
 
     inputs = tf.convert_to_tensor(inputs)
     unbatched = inputs.shape.rank == 3
@@ -220,6 +223,9 @@ class MyRandomFlip(Layer):
   def call(self, inputs, training=True):
     if training is None:
       training = tf.keras.backend.learning_phase()
+    
+    # Convert training to tensor boolean for TF 2.18.0 compatibility
+    training = tf.convert_to_tensor(training, dtype=tf.bool)
 
     def random_flipped_inputs():
       flipped_outputs = inputs
@@ -320,6 +326,9 @@ class MyRandomRotation(Layer):
   def call(self, inputs, training=True):
     if training is None:
       training = tf.keras.backend.learning_phase()
+    
+    # Convert training to tensor boolean for TF 2.18.0 compatibility
+    training = tf.convert_to_tensor(training, dtype=tf.bool)
 
     inputs = tf.convert_to_tensor(inputs)
     original_shape = inputs.shape
@@ -426,6 +435,8 @@ class MyDropout(tf.keras.layers.Layer):
         self.seed = seed
 
     def call(self, x, training):
+        # Convert training to tensor boolean for TF 2.18.0 compatibility
+        training = tf.convert_to_tensor(training, dtype=tf.bool)
         #seed = [self.seed, self.seed+1]
         seed = self.seed + tf.cast(1000 * tf.reshape(x, [-1])[:2], tf.int32)
         if (not training) or self.rate == 0:
