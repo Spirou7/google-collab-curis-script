@@ -18,10 +18,10 @@ import tensorflow.compat.v2 as tf
 
 import numpy as np
 from keras import backend
-from keras.engine import base_layer
-from keras.engine import base_preprocessing_layer
-from keras.preprocessing import image as image_preprocessing
-from keras.utils import control_flow_util
+from keras.src.engine import base_layer
+from keras.src.engine import base_preprocessing_layer
+from keras.src.preprocessing import image as image_preprocessing
+from keras.src.utils import control_flow_util
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.util.tf_export import keras_export
 
