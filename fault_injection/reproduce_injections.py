@@ -263,16 +263,16 @@ def main():
     while epoch < total_epochs:
         if early_terminate:
             break
-        train_loss.reset_states()
-        train_accuracy.reset_states()
-        valid_loss.reset_states()
-        valid_accuracy.reset_states()
+        train_loss.reset_state()
+        train_accuracy.reset_state()
+        valid_loss.reset_state()
+        valid_accuracy.reset_state()
         step = 0
 
         train_iterator = iter(train_dataset)
         for step in range(steps_per_epoch):
-            train_loss.reset_states()
-            train_accuracy.reset_states()
+            train_loss.reset_state()
+            train_accuracy.reset_state()
             if early_terminate:
                 break
             if epoch != target_epoch or step != target_step:
