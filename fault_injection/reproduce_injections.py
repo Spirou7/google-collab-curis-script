@@ -112,6 +112,7 @@ def main():
 
     with strategy.scope():
         model, back_model = get_model(rp.model, rp.seed)
+        model.build(input_shape=(None, config.image_height, config.image_width, config.channels))
 	# define loss and optimizer
         if 'sgd' in rp.model:
             lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
