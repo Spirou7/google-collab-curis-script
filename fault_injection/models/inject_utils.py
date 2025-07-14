@@ -1053,15 +1053,31 @@ def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs,
     record(train_recorder, "Inject worker: {}\n".format(inj_replica))
     record(train_recorder, "Inject layer: {}\n".format(inj_layer))
 
+    # Extract target layer data from dictionaries if needed
+    if isinstance(inputs, dict):
+        layer_inputs = inputs[inj_layer]
+    else:
+        layer_inputs = inputs
+        
+    if isinstance(kernels, dict):
+        layer_kernels = kernels[inj_layer]  
+    else:
+        layer_kernels = kernels
+        
+    if isinstance(outputs, dict):
+        layer_outputs = outputs[inj_layer]
+    else:
+        layer_outputs = outputs
+
     if is_input_target(inj_type):
-        target = inputs.values[inj_replica].numpy()
+        target = layer_inputs.values[inj_replica].numpy()
     elif is_weight_target(inj_type):
-        if type(kernels) == list:
-            target = kernels[0].values[inj_replica].numpy()
+        if type(layer_kernels) == list:
+            target = layer_kernels[0].values[inj_replica].numpy()
         else:
-            target = kernels.values[inj_replica].numpy()
+            target = layer_kernels.values[inj_replica].numpy()
     elif is_output_target(inj_type):
-        target = outputs.values[inj_replica].numpy()
+        target = layer_outputs.values[inj_replica].numpy()
     else:
         print("ERROR: Unsupported inject type!")
         exit(2)
@@ -1070,13 +1086,13 @@ def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs,
 
     mask, delta = set_replay_pos(target, rp, train_recorder)
 
-    if type(kernels) == list:
+    if type(layer_kernels) == list:
         golden_weights = []
-        for elem in kernels:
+        for elem in layer_kernels:
             wt_em = elem.values[0].numpy()
             golden_weights.append(wt_em)
     else:
-        golden_weights = kernels.values[0].numpy()
+        golden_weights = layer_kernels.values[0].numpy()
 
     np_array = np.zeros(strategy.num_replicas_in_sync, dtype=bool)
     np_array[inj_replica] = True
