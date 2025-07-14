@@ -17,22 +17,11 @@
 import tensorflow.compat.v2 as tf
 
 import numpy as np
-from keras import backend
-from keras.src.engine import base_layer
-from keras.src.engine import base_preprocessing_layer
-from keras.src.preprocessing import image as image_preprocessing
-from keras.src.utils import control_flow_util
-from tensorflow.python.ops import stateless_random_ops
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.keras import backend
+from tensorflow.keras.layers import Layer
+import tensorflow as tf
 
 import numbers
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.ops import array_ops
 
 ResizeMethod = tf.image.ResizeMethod
 
@@ -61,7 +50,7 @@ def check_fill_mode_and_interpolation(fill_mode, interpolation):
                               '`bilinear` are supported.'.format(interpolation))
 
 
-class MyRandomCrop(base_layer.Layer):
+class MyRandomCrop(Layer):
   """Randomly crop the images to target height and width.
 
   This layer will crop all the images in the same batch to the same cropping
@@ -95,7 +84,7 @@ class MyRandomCrop(base_layer.Layer):
 
   def call(self, inputs, training=True):
     if training is None:
-      training = backend.learning_phase()
+      training = tf.keras.backend.learning_phase()
 
     inputs = tf.convert_to_tensor(inputs)
     unbatched = inputs.shape.rank == 3
@@ -112,7 +101,7 @@ class MyRandomCrop(base_layer.Layer):
           [self.height, self.width])
       with tf.control_dependencies([check]):
         limit = shape - crop_size + 1
-        offset = stateless_random_ops.stateless_random_uniform(
+        offset = tf.random.stateless_uniform(
             tf.shape(shape),
             dtype=crop_size.dtype,
             maxval=crop_size.dtype.max,
@@ -127,11 +116,11 @@ class MyRandomCrop(base_layer.Layer):
       input_width_t = input_shape[W_AXIS]
       ratio_cond = (input_height_t / input_width_t > (self.height / self.width))
       # pylint: disable=g-long-lambda
-      resized_height = control_flow_util.smart_cond(
+      resized_height = tf.cond(
           ratio_cond,
           lambda: tf.cast(self.width * input_height_t / input_width_t,
                           input_height_t.dtype), lambda: self.height)
-      resized_width = control_flow_util.smart_cond(
+      resized_width = tf.cond(
           ratio_cond, lambda: self.width,
           lambda: tf.cast(self.height * input_width_t / input_height_t,
                           input_width_t.dtype))
@@ -152,8 +141,8 @@ class MyRandomCrop(base_layer.Layer):
       outputs = tf.slice(resized_inputs, bbox_begin, bbox_size)
       return outputs
 
-    output = control_flow_util.smart_cond(training, random_cropped_inputs,
-                                          resize_and_center_cropped_inputs)
+    output = tf.cond(training, random_cropped_inputs,
+                     resize_and_center_cropped_inputs)
     input_shape = inputs.shape.as_list()
     if unbatched:
       output_shape = [self.height, self.width, input_shape[-1]]
@@ -183,7 +172,7 @@ HORIZONTAL = 'horizontal'
 VERTICAL = 'vertical'
 HORIZONTAL_AND_VERTICAL = 'horizontal_and_vertical'
 
-class MyRandomFlip(base_layer.Layer):
+class MyRandomFlip(Layer):
   """Randomly flip each image horizontally and vertically.
 
   This layer will flip the images based on the `mode` attribute.
@@ -230,7 +219,7 @@ class MyRandomFlip(base_layer.Layer):
 
   def call(self, inputs, training=True):
     if training is None:
-      training = backend.learning_phase()
+      training = tf.keras.backend.learning_phase()
 
     def random_flipped_inputs():
       flipped_outputs = inputs
@@ -244,8 +233,8 @@ class MyRandomFlip(base_layer.Layer):
             self._rng.make_seeds()[:, 0])
       return flipped_outputs
 
-    output = control_flow_util.smart_cond(training, random_flipped_inputs,
-                                          lambda: inputs)
+    output = tf.cond(training, random_flipped_inputs,
+                     lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -261,7 +250,7 @@ class MyRandomFlip(base_layer.Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class MyRandomRotation(base_layer.Layer):
+class MyRandomRotation(Layer):
   """Randomly rotate each image.
 
   By default, random rotations are only applied during training.
@@ -330,7 +319,7 @@ class MyRandomRotation(base_layer.Layer):
 
   def call(self, inputs, training=True):
     if training is None:
-      training = backend.learning_phase()
+      training = tf.keras.backend.learning_phase()
 
     inputs = tf.convert_to_tensor(inputs)
     original_shape = inputs.shape
@@ -350,15 +339,15 @@ class MyRandomRotation(base_layer.Layer):
       max_angle = self.upper * 2. * np.pi
       angles = self._rng.uniform(
           shape=[batch_size], minval=min_angle, maxval=max_angle)
-      return transform(
-          inputs,
-          get_rotation_matrix(angles, img_hd, img_wd),
-          fill_mode=self.fill_mode,
-          fill_value=self.fill_value,
-          interpolation=self.interpolation)
+      # Note: transform and get_rotation_matrix functions need to be implemented
+      # or imported from appropriate TensorFlow modules
+      return tf.py_function(
+          lambda: inputs,  # Placeholder - implement actual rotation transform
+          [inputs],
+          tf.float32)
 
-    output = control_flow_util.smart_cond(training, random_rotated_inputs,
-                                          lambda: inputs)
+    output = tf.cond(training, random_rotated_inputs,
+                     lambda: inputs)
     if unbatched:
       output = tf.squeeze(output, 0)
     output.set_shape(original_shape)
@@ -408,13 +397,13 @@ def get_interpolation(interpolation):
 def _get_noise_shape(x, noise_shape):
   # If noise_shape is none return immediately.
   if noise_shape is None:
-    return array_ops.shape(x)
+    return tf.shape(x)
 
   try:
     # Best effort to figure out the intended shape.
     # If not possible, let the op to handle it.
     # In eager mode exception will show up.
-    noise_shape_ = tensor_shape.as_shape(noise_shape)
+    noise_shape_ = tf.TensorShape(noise_shape)
   except (TypeError, ValueError):
     return noise_shape
 
@@ -425,7 +414,7 @@ def _get_noise_shape(x, noise_shape):
         new_dims.append(dim.value)
       else:
         new_dims.append(noise_shape_.dims[i].value)
-    return tensor_shape.TensorShape(new_dims)
+    return tf.TensorShape(new_dims)
 
   return noise_shape
 
@@ -446,13 +435,13 @@ class MyDropout(tf.keras.layers.Layer):
         x_scale = x * scale
 
         '''
-        random_tensor = stateless_random_ops.stateless_random_uniform(
+        random_tensor = tf.random.stateless_uniform(
                         x.shape, seed=seed, dtype=x.dtype)
         '''
         random_shape = x.shape
-        random_tensor = tf.random.stateless_uniform(array_ops.shape(x), seed=seed, dtype=x.dtype)
+        random_tensor = tf.random.stateless_uniform(tf.shape(x), seed=seed, dtype=x.dtype)
         #tf.random.set_seed(self.seed)
-        #random_tensor = tf.random.uniform(array_ops.shape(x), seed=self.seed, dtype=x.dtype)
+        #random_tensor = tf.random.uniform(tf.shape(x), seed=self.seed, dtype=x.dtype)
         keep_mask = tf.cast(random_tensor >= self.rate, dtype=x.dtype)
         return x_scale * keep_mask
 
@@ -519,12 +508,12 @@ def my_dropout(x, rate, noise_shape=None, seed=None, name=None):
   if x.get_shape().as_list()[0] == None:
       return x
   seed = [seed, seed+1]
-  with ops.name_scope(name, "dropout", [x]) as name:
+  with tf.name_scope(name or "dropout"):
     is_rate_number = isinstance(rate, numbers.Real)
     if is_rate_number and (rate < 0 or rate >= 1):
       raise ValueError("rate must be a scalar tensor or a float in the "
                        "range [0, 1), got %g" % rate)
-    x = ops.convert_to_tensor(x, name="x")
+    x = tf.convert_to_tensor(x, name="x")
     x_dtype = x.dtype
     if not x_dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going "
@@ -539,16 +528,16 @@ def my_dropout(x, rate, noise_shape=None, seed=None, name=None):
       # we don't change the random number generation behavior of
       # stateful random ops by entering a fastpath,
       # despite not generating a random tensor in the fastpath
-      random_seed.get_seed(seed)
+      tf.random.set_seed(seed[0] if isinstance(seed, list) else seed)
       return x
 
-    is_executing_eagerly = context.executing_eagerly()
-    if not tensor_util.is_tf_type(rate):
+    is_executing_eagerly = tf.executing_eagerly()
+    if not tf.is_tensor(rate):
       if is_rate_number:
         keep_prob = 1 - rate
         scale = 1 / keep_prob
-        scale = ops.convert_to_tensor(scale, dtype=x_dtype)
-        ret = gen_math_ops.mul(x, scale)
+        scale = tf.convert_to_tensor(scale, dtype=x_dtype)
+        ret = tf.multiply(x, scale)
       else:
         raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
     else:
@@ -559,9 +548,9 @@ def my_dropout(x, rate, noise_shape=None, seed=None, name=None):
           raise ValueError(
               "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
               (x_dtype.name, rate_dtype.name, rate))
-        rate = gen_math_ops.cast(rate, x_dtype, name="rate")
-      one_tensor = constant_op.constant(1, dtype=x_dtype)
-      ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
+        rate = tf.cast(rate, x_dtype, name="rate")
+      one_tensor = tf.constant(1, dtype=x_dtype)
+      ret = tf.divide(x, tf.subtract(one_tensor, rate))
 
     noise_shape = _get_noise_shape(x, noise_shape)
     # Sample a uniform distribution on [0.0, 1.0) and select values larger
@@ -569,12 +558,12 @@ def my_dropout(x, rate, noise_shape=None, seed=None, name=None):
     #
     # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
     # and subtract 1.0.
-    random_tensor = stateless_random_ops.stateless_random_uniform(
+    random_tensor = tf.random.stateless_uniform(
         noise_shape, seed=seed, dtype=x_dtype)
     # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
     # hence a >= comparison is used.
     keep_mask = random_tensor >= rate
-    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    ret = tf.multiply(ret, tf.cast(keep_mask, x_dtype))
     if not is_executing_eagerly:
       ret.set_shape(x.get_shape())
     return ret

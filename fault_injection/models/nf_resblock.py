@@ -3,7 +3,7 @@
 ##############################
 
 import tensorflow as tf
-from keras import backend as K
+from tensorflow.keras import backend as K
 from models.nf_layers import InjectWSConv2D, SqueezeExcite, StochasticDepth
 
 class NFResBlock(tf.keras.Model):
