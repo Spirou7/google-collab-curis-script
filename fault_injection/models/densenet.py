@@ -66,7 +66,7 @@ class BottleNeck(tf.keras.layers.Layer):
         x, x_conv = self.conv2(x, inject=inject, inj_args=inj_args)
         layer_outputs[self.conv2.l_name] = x_conv
 
-        x_d = self.dropout(x, training)
+        x_d = self.dropout(x, training=training)
         layer_inputs[self.l_name + "_dropout"] = tf.cast(tf.math.equal(x * (1. / (1. - self.drop_rate)), x_d), tf.float32) 
         x = x_d
 

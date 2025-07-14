@@ -85,7 +85,7 @@ class BasicBlock(tf.keras.layers.Layer):
         layer_outputs[self.l_name + "_relu1"] = x
 
         # TODO: add layer_input/outputs
-        x_d = self.dropout1(x, training)
+        x_d = self.dropout1(x, training=training)
         layer_inputs[self.l_name + "_dropout1"] = tf.cast(tf.math.equal(x * (1. / (1. - self.drop_rate)), x_d), tf.float32)
         x = x_d
 
@@ -108,7 +108,7 @@ class BasicBlock(tf.keras.layers.Layer):
         output = tf.nn.relu(x)
         layer_outputs[self.l_name + "_relu_add"] = output
 
-        x_d = self.dropout2(output, training)
+        x_d = self.dropout2(output, training=training)
         layer_inputs[self.l_name + "_dropout2"] = tf.cast(tf.math.equal(output * (1. / (1. - self.drop_rate)), x_d), tf.float32) 
         output = x_d
  

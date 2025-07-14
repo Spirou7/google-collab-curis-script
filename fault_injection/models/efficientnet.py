@@ -164,7 +164,7 @@ class MBConv(tf.keras.layers.Layer):
 
         if self.stride == 1 and self.in_channels == self.out_channels:
             if self.drop_connect_rate:
-                x_d = self.dropout(x, training)
+                x_d = self.dropout(x, training=training)
                 layer_inputs[self.l_name + "_dropout"] = tf.cast(tf.math.equal(x * (1. / (1. - self.drop_connect_rate)), x_d), tf.float32) 
                 x = x_d
 
@@ -367,7 +367,7 @@ class EfficientNet(tf.keras.Model):
 
         x = tf.nn.swish(x)
         x = self.pool(x)
-        x = self.dropout(x, training)
+        x = self.dropout(x, training=training)
         #x = my_dropout(x, self.dropout_rate, seed=self.seed)
         x = self.fc(x)
 
