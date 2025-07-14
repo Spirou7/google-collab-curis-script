@@ -54,7 +54,7 @@ class ResNetTypeI(tf.keras.Model):
                                   l_name="basicblock_4")
 
         self.avgpool = tf.keras.layers.GlobalAveragePooling2D()
-        print("Seed value is {}".format(seed))
+        #print("Seed value is {}".format(seed))
         self.fc = tf.keras.layers.Dense(units=NUM_CLASSES, activation=tf.keras.activations.softmax, kernel_initializer=tf.keras.initializers.GlorotNormal(seed=seed))
 
     def call(self, inputs, training=None, mask=None, inject=None, inj_args=None):

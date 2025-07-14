@@ -287,7 +287,22 @@ def main():
                 else:
                     l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
 
-                inj_args, inj_flag = get_replay_args(InjType[rp.fmodel], rp, strategy, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder)
+                # Debug: Check if target layer exists in kernels
+                print(f"DEBUG: Target layer: {inj_layer}")
+                print(f"DEBUG: Available layers: {list(l_kernels.keys())[:5]}...")  # Only show first 5
+                
+                if inj_layer not in l_kernels:
+                    print(f"ERROR: Target layer {inj_layer} not found in available layers!")
+                    print(f"Available layers: {list(l_kernels.keys())}")
+                    exit(1)
+                
+                try:
+                    inj_args, inj_flag = get_replay_args(InjType[rp.fmodel], rp, strategy, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder)
+                except Exception as e:
+                    print(f"ERROR in get_replay_args: {e}")
+                    print(f"Layer: {inj_layer}")
+                    print(f"InjType: {rp.fmodel}")
+                    exit(1)
 
                 if 'fwrd' in rp.stage:
                     losses = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
