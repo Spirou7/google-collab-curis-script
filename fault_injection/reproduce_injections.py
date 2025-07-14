@@ -164,7 +164,7 @@ def main():
             images, labels = inputs
             outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
             predictions = outputs['logits']
-            return l_inputs[inj_layer], l_kernels[inj_layer], l_outputs[inj_layer]
+            return l_inputs, l_kernels, l_outputs
         return strategy.run(step1_fn, args=(iter_inputs,))
 
     @tf.function
@@ -202,7 +202,7 @@ def main():
                 avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
             man_grad_start = tape.gradient(avg_loss, grad_start)
             _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, layer_inputs=l_inputs, layer_kernels=l_kernels, inject=None, inj_args=None)
-            return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
+            return bkwd_inputs, bkwd_kernels, bkwd_outputs
 
         return strategy.run(step1_fn, args=(iter_inputs,))
 
@@ -287,13 +287,21 @@ def main():
                 else:
                     l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
 
-                # Debug: Check if target layer exists in kernels
+                # Debug: Check structure of l_kernels
                 print(f"DEBUG: Target layer: {inj_layer}")
-                print(f"DEBUG: Available layers: {list(l_kernels.keys())[:5]}...")  # Only show first 5
+                print(f"DEBUG: l_kernels type: {type(l_kernels)}")
                 
-                if inj_layer not in l_kernels:
-                    print(f"ERROR: Target layer {inj_layer} not found in available layers!")
-                    print(f"Available layers: {list(l_kernels.keys())}")
+                if isinstance(l_kernels, dict):
+                    print(f"DEBUG: Available layers: {list(l_kernels.keys())[:5]}...")  # Only show first 5
+                    if inj_layer not in l_kernels:
+                        print(f"ERROR: Target layer {inj_layer} not found in available layers!")
+                        print(f"Available layers: {list(l_kernels.keys())}")
+                        exit(1)
+                elif isinstance(l_kernels, list):
+                    print(f"DEBUG: l_kernels is a list with {len(l_kernels)} elements")
+                    print(f"DEBUG: First element type: {type(l_kernels[0]) if l_kernels else 'empty list'}")
+                else:
+                    print(f"DEBUG: l_kernels is neither dict nor list: {l_kernels}")
                     exit(1)
                 
                 try:
