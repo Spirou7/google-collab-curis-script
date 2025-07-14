@@ -106,8 +106,8 @@ class BiasLayer(tf.keras.layers.Layer):
         self.bias = None
 
     def build(self, input_shape):
-        self.bias = self.add_weight('bias',
-                         #shape=input_shape[1:],
+        self.bias = self.add_weight(
+                         name='bias',
                          shape=input_shape[-1:],
                          initializer='zeros',
                          trainable=True)
