@@ -437,24 +437,32 @@ class MyDropout(tf.keras.layers.Layer):
     def call(self, x, training):
         # Convert training to tensor boolean for TF 2.18.0 compatibility
         training = tf.convert_to_tensor(training, dtype=tf.bool)
-        #seed = [self.seed, self.seed+1]
-        seed = self.seed + tf.cast(1000 * tf.reshape(x, [-1])[:2], tf.int32)
-        if (not training) or self.rate == 0:
-            return x
-        keep_prob = 1 - self.rate
-        scale = 1 / keep_prob
-        x_scale = x * scale
+        
+        def apply_dropout():
+            #seed = [self.seed, self.seed+1]
+            seed = self.seed + tf.cast(1000 * tf.reshape(x, [-1])[:2], tf.int32)
+            keep_prob = 1 - self.rate
+            scale = 1 / keep_prob
+            x_scale = x * scale
 
-        '''
-        random_tensor = tf.random.stateless_uniform(
-                        x.shape, seed=seed, dtype=x.dtype)
-        '''
-        random_shape = x.shape
-        random_tensor = tf.random.stateless_uniform(tf.shape(x), seed=seed, dtype=x.dtype)
-        #tf.random.set_seed(self.seed)
-        #random_tensor = tf.random.uniform(tf.shape(x), seed=self.seed, dtype=x.dtype)
-        keep_mask = tf.cast(random_tensor >= self.rate, dtype=x.dtype)
-        return x_scale * keep_mask
+            '''
+            random_tensor = tf.random.stateless_uniform(
+                            x.shape, seed=seed, dtype=x.dtype)
+            '''
+            random_shape = x.shape
+            random_tensor = tf.random.stateless_uniform(tf.shape(x), seed=seed, dtype=x.dtype)
+            #tf.random.set_seed(self.seed)
+            #random_tensor = tf.random.uniform(tf.shape(x), seed=self.seed, dtype=x.dtype)
+            keep_mask = tf.cast(random_tensor >= self.rate, dtype=x.dtype)
+            return x_scale * keep_mask
+        
+        def no_dropout():
+            return x
+        
+        # Use tf.cond for graph-mode compatibility
+        # Check if training is False or rate is 0
+        should_skip_dropout = tf.logical_or(tf.logical_not(training), tf.equal(self.rate, 0.0))
+        return tf.cond(should_skip_dropout, no_dropout, apply_dropout)
 
 
 def my_dropout(x, rate, noise_shape=None, seed=None, name=None):
