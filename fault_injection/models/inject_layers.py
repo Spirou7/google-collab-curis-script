@@ -494,7 +494,10 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                     # Inject to output
                     if is_output_target(inj_args.inj_type):
                         print("injecting to target")
+
+                        #print("before:", conv_out)
                         conv_out = inj_to_tensor(conv_out, inj_args)
+                        #print("after:", conv_out)
 
                     # TODO: Correction for INPUT_16 and WT_16
                 return conv_out

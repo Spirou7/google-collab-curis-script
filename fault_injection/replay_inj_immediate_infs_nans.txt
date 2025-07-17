@@ -28,17 +28,3 @@ Epoch: 19/80, step: 20/49, loss: 2.02599, accuracy: 0.22559
 Epoch: 19/80, step: 21/49, loss: 2.02050, accuracy: 0.22363
 Epoch: 19/80, step: 22/49, loss: 1.96811, accuracy: 0.25586
 Epoch: 19/80, step: 23/49, loss: 1.98246, accuracy: 0.25391
-Epoch: 19/80, step: 24/49, loss: 1.99133, accuracy: 0.25391
-Epoch: 19/80, step: 25/49, loss: 2.04215, accuracy: 0.22266
-Epoch: 19/80, step: 26/49, loss: 2.11077, accuracy: 0.22949
-Epoch: 19/80, step: 27/49, loss: 1.97077, accuracy: 0.26367
-Epoch: 19/80, step: 28/49, loss: 1.94448, accuracy: 0.27539
-Epoch: 19/80, step: 29/49, loss: 1.95407, accuracy: 0.27344
-Epoch: 19/80, step: 30/49, loss: 1.91817, accuracy: 0.29688
-Epoch: 19/80, step: 31/49, loss: 1.94911, accuracy: 0.24902
-Epoch: 19/80, step: 32/49, loss: 1.91323, accuracy: 0.27148
-Epoch: 19/80, step: 33/49, loss: 1.95706, accuracy: 0.25781
-Epoch: 19/80, step: 34/49, loss: 1.91769, accuracy: 0.27148
-Epoch: 19/80, step: 35/49, loss: 1.88760, accuracy: 0.27637
-Epoch: 19/80, step: 36/49, loss: 1.96853, accuracy: 0.27930
-Epoch: 19/80, step: 37/49, loss: 1.86300, accuracy: 0.29590
