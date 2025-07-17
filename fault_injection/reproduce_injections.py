@@ -1,5 +1,4 @@
 import tensorflow as tf
-from local_tpu_resolver import LocalTPUClusterResolver
 
 from models.resnet import resnet_18
 from models.backward_resnet import backward_resnet_18
@@ -87,14 +86,9 @@ def main():
     if args is None:
         exit()
 
-    # TPU settings
-    tpu_name = os.getenv('TPU_NAME')
-    resolver = LocalTPUClusterResolver()
-    tf.tpu.experimental.initialize_tpu_system(resolver)
-
-    strategy = tf.distribute.TPUStrategy(resolver)
-    per_replica_batch_size = config.BATCH_SIZE // strategy.num_replicas_in_sync
-    print("Finish TPU strategy setting!")
+    # CPU/GPU settings
+    per_replica_batch_size = config.BATCH_SIZE
+    print("Using CPU/GPU for training!")
 
 
     rp = read_injection(args.file)
@@ -103,139 +97,122 @@ def main():
     # get the dataset
     train_dataset, valid_dataset, train_count, valid_count = generate_datasets(rp.seed)
 
-    train_dataset = strategy.experimental_distribute_dataset(train_dataset)
-    valid_dataset = strategy.experimental_distribute_dataset(valid_dataset)
+    # No distribution needed for CPU/GPU
 
-    with strategy.scope():
-        model, back_model = get_model(rp.model, rp.seed)
-	# define loss and optimizer
-        if 'sgd' in rp.model:
-            lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
-            	initial_learning_rate=rp.learning_rate,
-            	decay_steps = 2000,
-            	end_learning_rate=0.001)
-            model.optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
-        elif 'effnet' in rp.model:
-            lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
-                initial_learning_rate=rp.learning_rate,
-                decay_steps = 2000,
-                end_learning_rate=0.0005)
-            model.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-        else:
-            lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
-                initial_learning_rate=rp.learning_rate,
-                decay_steps = 5000,
-                end_learning_rate=0.0001)
-            model.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-        train_loss = tf.keras.metrics.Mean(name='train_loss')
-        train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
-        valid_loss = tf.keras.metrics.Mean(name='valid_loss')
-        valid_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='valid_accuracy')
+    # Model creation for CPU/GPU execution
+    model, back_model = get_model(rp.model, rp.seed)
+    # define loss and optimizer
+    if 'sgd' in rp.model:
+        lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+            initial_learning_rate=rp.learning_rate,
+            decay_steps = 2000,
+            end_learning_rate=0.001)
+        model.optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+    elif 'effnet' in rp.model:
+        lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+            initial_learning_rate=rp.learning_rate,
+            decay_steps = 2000,
+            end_learning_rate=0.0005)
+        model.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+    else:
+        lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+            initial_learning_rate=rp.learning_rate,
+            decay_steps = 5000,
+            end_learning_rate=0.0001)
+        model.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+    train_loss = tf.keras.metrics.Mean(name='train_loss')
+    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+    valid_loss = tf.keras.metrics.Mean(name='valid_loss')
+    valid_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='valid_accuracy')
 
     @tf.function
     def train_step(iterator):
-        def step_fn(inputs):
-            images, labels = inputs
-            with tf.GradientTape() as tape:
-                outputs, _, _, l_outputs = model(images, training=True, inject=False)
-                predictions = outputs['logits']
-                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
-                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+        images, labels = next(iterator)
+        with tf.GradientTape() as tape:
+            outputs, _, _, l_outputs = model(images, training=True, inject=False)
+            predictions = outputs['logits']
+            loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+            avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
 
-            tvars = model.trainable_variables
-            gradients = tape.gradient(avg_loss, tvars)
-            model.optimizer.apply_gradients(grads_and_vars=list(zip(gradients, tvars)))
+        tvars = model.trainable_variables
+        gradients = tape.gradient(avg_loss, tvars)
+        model.optimizer.apply_gradients(grads_and_vars=list(zip(gradients, tvars)))
 
-            train_loss.update_state(avg_loss * strategy.num_replicas_in_sync)
-            train_accuracy.update_state(labels, predictions)
-            return avg_loss
-
-        return strategy.run(step_fn, args=(next(iterator),))
+        train_loss.update_state(avg_loss)
+        train_accuracy.update_state(labels, predictions)
+        return avg_loss
 
 
     @tf.function
     def fwrd_inj_train_step1(iter_inputs, inj_layer):
-        def step1_fn(inputs):
-            images, labels = inputs
-            outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
-            predictions = outputs['logits']
-            return l_inputs[inj_layer], l_kernels[inj_layer], l_outputs[inj_layer]
-        return strategy.run(step1_fn, args=(iter_inputs,))
+        images, labels = iter_inputs
+        outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
+        predictions = outputs['logits']
+        return l_inputs[inj_layer], l_kernels[inj_layer], l_outputs[inj_layer]
 
     @tf.function
     def fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag):
-        def step2_fn(inputs, inject):
-            with tf.GradientTape() as tape:
-                images, labels = inputs
-                outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=inject, inj_args=inj_args)
-                predictions = outputs['logits']
-                grad_start = outputs['grad_start']
-                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
-                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+        with tf.GradientTape() as tape:
+            images, labels = iter_inputs
+            outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=inj_flag, inj_args=inj_args)
+            predictions = outputs['logits']
+            grad_start = outputs['grad_start']
+            loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+            avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
 
-            man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
-            manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels)
+        man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
+        manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels)
 
-            gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
-            model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
+        gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
+        model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
 
-            train_loss.update_state(avg_loss * strategy.num_replicas_in_sync)
-            train_accuracy.update_state(labels, predictions)
-            return avg_loss
-
-        return strategy.run(step2_fn, args=(iter_inputs, inj_flag))
+        train_loss.update_state(avg_loss)
+        train_accuracy.update_state(labels, predictions)
+        return avg_loss
 
     @tf.function
     def bkwd_inj_train_step1(iter_inputs, inj_layer):
-        def step1_fn(inputs):
-            images, labels = inputs
-            with tf.GradientTape() as tape:
-                outputs, l_inputs, l_kernels, _ = model(images, training=True, inject=False)
-                predictions = outputs['logits']
-                grad_start = outputs['grad_start']
-                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
-                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
-            man_grad_start = tape.gradient(avg_loss, grad_start)
-            _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, l_inputs, l_kernels)
-            return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
-
-        return strategy.run(step1_fn, args=(iter_inputs,))
+        images, labels = iter_inputs
+        with tf.GradientTape() as tape:
+            outputs, l_inputs, l_kernels, _ = model(images, training=True, inject=False)
+            predictions = outputs['logits']
+            grad_start = outputs['grad_start']
+            loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+            avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+        man_grad_start = tape.gradient(avg_loss, grad_start)
+        _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, l_inputs, l_kernels)
+        return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
 
     @tf.function
     def bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag):
-        def step2_fn(inputs, inject):
-            images, labels = inputs
-            with tf.GradientTape() as tape:
-                outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
-                predictions = outputs['logits']
-                grad_start = outputs['grad_start']
-                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
-                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
-            man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
-            manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels, inject=inject, inj_args=inj_args)
+        images, labels = iter_inputs
+        with tf.GradientTape() as tape:
+            outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
+            predictions = outputs['logits']
+            grad_start = outputs['grad_start']
+            loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+            avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+        man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
+        manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels, inject=inj_flag, inj_args=inj_args)
 
-            gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
-            model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
+        gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
+        model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
 
-            train_loss.update_state(avg_loss * strategy.num_replicas_in_sync)
-            train_accuracy.update_state(labels, predictions)
+        train_loss.update_state(avg_loss)
+        train_accuracy.update_state(labels, predictions)
 
-            return avg_loss
-
-        return strategy.run(step2_fn, args=(iter_inputs, inj_flag))
+        return avg_loss
 
 
     @tf.function
     def valid_step(iterator):
-        def step_fn(inputs):
-            images, labels = inputs
-            outputs , _, _, _ = model(images, training=False)
-            predictions = outputs['logits']
-            v_loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
-            v_loss = tf.nn.compute_average_loss(v_loss, global_batch_size=config.BATCH_SIZE)
-            valid_loss.update_state(v_loss)
-            valid_accuracy.update_state(labels, predictions)
-        return strategy.run(step_fn, args=(next(iterator),))
+        images, labels = next(iterator)
+        outputs , _, _, _ = model(images, training=False)
+        predictions = outputs['logits']
+        v_loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+        v_loss = tf.nn.compute_average_loss(v_loss, global_batch_size=config.BATCH_SIZE)
+        valid_loss.update_state(v_loss)
+        valid_accuracy.update_state(labels, predictions)
 
     steps_per_epoch = math.ceil(train_count / config.BATCH_SIZE)
     valid_steps_per_epoch = math.ceil(valid_count / config.VALID_BATCH_SIZE)
@@ -247,9 +224,9 @@ def main():
     record(train_recorder, "Inject to epoch: {}\n".format(target_epoch))
     record(train_recorder, "Inject to step: {}\n".format(target_step))
 
-    ckpt_path = os.path.join(config.golden_model_dir, rp.model, "epoch_{}".format(target_epoch - 1))
-    record(train_recorder, "Load weights from {}\n".format(ckpt_path))
-    model.load_weights(ckpt_path)
+    #ckpt_path = os.path.join(config.golden_model_dir, rp.model, "epoch_{}".format(target_epoch - 1))
+    #record(train_recorder, "Load weights from {}\n".format(ckpt_path))
+    #model.load_weights(ckpt_path)
 
 
     start_epoch = target_epoch
@@ -259,16 +236,16 @@ def main():
     while epoch < total_epochs:
         if early_terminate:
             break
-        train_loss.reset_states()
-        train_accuracy.reset_states()
-        valid_loss.reset_states()
-        valid_accuracy.reset_states()
+        train_loss.reset_state()
+        train_accuracy.reset_state()
+        valid_loss.reset_state()
+        valid_accuracy.reset_state()
         step = 0
 
         train_iterator = iter(train_dataset)
         for step in range(steps_per_epoch):
-            train_loss.reset_states()
-            train_accuracy.reset_states()
+            train_loss.reset_state()
+            train_accuracy.reset_state()
             if early_terminate:
                 break
             if epoch != target_epoch or step != target_step:
@@ -282,7 +259,7 @@ def main():
                 else:
                     l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
 
-                inj_args, inj_flag = get_replay_args(InjType[rp.fmodel], rp, strategy, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder)
+                inj_args, inj_flag = get_replay_args(InjType[rp.fmodel], rp, None, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder)
 
                 if 'fwrd' in rp.stage:
                     losses = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)

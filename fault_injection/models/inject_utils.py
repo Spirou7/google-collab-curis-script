@@ -1053,6 +1053,39 @@ def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs,
     record(train_recorder, "Inject worker: {}\n".format(inj_replica))
     record(train_recorder, "Inject layer: {}\n".format(inj_layer))
 
+    # Handle CPU execution (strategy is None)
+    if strategy is None:
+        if is_input_target(inj_type):
+            target = inputs.numpy()
+        elif is_weight_target(inj_type):
+            if type(kernels) == list:
+                target = kernels[0].numpy()
+            else:
+                target = kernels.numpy()
+        elif is_output_target(inj_type):
+            target = outputs.numpy()
+        else:
+            print("ERROR: Unsupported inject type!")
+            exit(2)
+
+        record(train_recorder, "Shape for target layer is {}\n".format(target.shape))
+
+        mask, delta = set_replay_pos(target, rp, train_recorder)
+
+        if type(kernels) == list:
+            golden_weights = []
+            for elem in kernels:
+                wt_em = elem.numpy()
+                golden_weights.append(wt_em)
+        else:
+            golden_weights = kernels.numpy()
+
+        # For CPU execution, just return True as injection flag
+        inj_flag = True
+
+        return InjArgs(inj_replica, inj_layer, inj_type, golden_weights, outputs, mask, delta), inj_flag
+    
+    # Distributed execution code (for compatibility with multi-GPU setups)
     if is_input_target(inj_type):
         target = inputs.values[inj_replica].numpy()
     elif is_weight_target(inj_type):
