@@ -161,7 +161,7 @@ def main():
             avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
 
         man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
-        manual_gradients, _, _, _ = back_model(man_grad_start, l_inputs, l_kernels)
+        manual_gradients, _, _, _ = back_model(grad_in=man_grad_start, layer_inputs=l_inputs, layer_kernels=l_kernels, inject=False, inj_args=None)
 
         gradients = manual_gradients + golden_gradients[golden_grad_idx[rp.model]:]
         model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
@@ -180,7 +180,7 @@ def main():
             loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
             avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
         man_grad_start = tape.gradient(avg_loss, grad_start)
-        _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(man_grad_start, l_inputs, l_kernels)
+        _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model(grad_in=man_grad_start, layer_inputs=l_inputs, layer_kernels=l_kernels, inject=False, inj_args=None)
         return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
 
     @tf.function
@@ -252,12 +252,15 @@ def main():
             if epoch != target_epoch or step != target_step:
                 losses = train_step(train_iterator)
             else:
+                print("performing injection!")
                 iter_inputs = next(train_iterator)
                 inj_layer = rp.target_layer
 
                 if 'fwrd' in rp.stage:
+                    print("forward injection")
                     l_inputs, l_kernels, l_outputs = fwrd_inj_train_step1(iter_inputs, inj_layer)
                 else:
+                    print("backward injection")
                     l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
 
                 inj_args, inj_flag = get_replay_args(InjType[rp.fmodel], rp, None, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder)
