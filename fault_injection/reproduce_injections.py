@@ -244,6 +244,7 @@ def main():
 
         train_iterator = iter(train_dataset)
         for step in range(steps_per_epoch):
+            print("epoch:", epoch, "step:", step)
             train_loss.reset_state()
             train_accuracy.reset_state()
             if early_terminate:
