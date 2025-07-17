@@ -174,3 +174,4 @@ Epoch: 22/80, step: 16/49, loss: 1.64934, accuracy: 0.38965
 Epoch: 22/80, step: 17/49, loss: 1.57190, accuracy: 0.42188
 Epoch: 22/80, step: 18/49, loss: 1.51743, accuracy: 0.44824
 Epoch: 22/80, step: 19/49, loss: 1.53267, accuracy: 0.44434
+Epoch: 22/80, step: 20/49, loss: 1.60702, accuracy: 0.38574
