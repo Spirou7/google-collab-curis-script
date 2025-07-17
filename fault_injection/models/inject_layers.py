@@ -468,13 +468,17 @@ class InjectConv2D(tf.keras.layers.Conv2D):
         if not is_target:
             conv_out = super(InjectConv2D, self).call(inputs)
         else:
+
+            print("about to perform hella injection into this conv2d")
             def no_inj(inputs):
                 return super(InjectConv2D, self).call(inputs)
 
             def do_inj(inputs, inj_args):
                 if is_input_target(inj_args.inj_type):
+                    print("input injection")
                     inputs = inj_to_tensor(inputs, inj_args)
                 if is_weight_target(inj_args.inj_type):
+                    print("weight target")
                     modified_wts = [inj_to_tensor(None, inj_args)]
                     for i in range(1,len(inj_args.golden_weights)):
                         modified_wts.append(inj_args.golden_weights[i])
@@ -489,6 +493,7 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                 if is_target:
                     # Inject to output
                     if is_output_target(inj_args.inj_type):
+                        print("injecting to target")
                         conv_out = inj_to_tensor(conv_out, inj_args)
 
                     # TODO: Correction for INPUT_16 and WT_16

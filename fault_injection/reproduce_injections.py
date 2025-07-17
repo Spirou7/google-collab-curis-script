@@ -85,8 +85,8 @@ def main():
     args = parse_args()
     if args is None:
         exit()
-
-    # CPU/GPU settings
+    
+    # removed previous TPU settings, replaced with CPU/GPU settings
     per_replica_batch_size = config.BATCH_SIZE
     print("Using CPU/GPU for training!")
 
@@ -97,7 +97,9 @@ def main():
     # get the dataset
     train_dataset, valid_dataset, train_count, valid_count = generate_datasets(rp.seed)
 
-    # No distribution needed for CPU/GPU
+    # Removed the training distribution for a TPU, since CPU/GPU doesn't need that
+
+    # with no strategy scope
 
     # Model creation for CPU/GPU execution
     model, back_model = get_model(rp.model, rp.seed)
