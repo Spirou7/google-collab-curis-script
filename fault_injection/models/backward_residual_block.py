@@ -53,11 +53,11 @@ class BackwardBasicBlock(tf.keras.layers.Layer):
         grad_downsample_in = self.backward_relu_add(grad_in, layer_inputs[self.l_name + '_relu_add'])
 
         if self.stride != 1:
-            grad_residual, grad_gamma, grad_beta = self.backward_bn3(grad_downsample_in, layer_inputs[self.l_name + '_bn3'], layer_kernels[self.l_name + '_bn3'][0], layer_kernels[self.l_name + '_bn3'][1], layer_kernels[self.l_name + '_bn3_epsilon'])
+            grad_residual, grad_gamma, grad_beta = self.backward_bn3.call(grad_downsample_in, layer_inputs[self.l_name + '_bn3'], layer_kernels[self.l_name + '_bn3'][0], layer_kernels[self.l_name + '_bn3'][1], layer_kernels[self.l_name + '_bn3_epsilon'])
             grad_params.insert(0, grad_beta)
             grad_params.insert(0, grad_gamma)
 
-            grad_residual, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_downsample_conv(grad_residual, layer_inputs[self.l_name + '_downsample'], layer_kernels[self.l_name + '_downsample'][0], inject=inject, inj_args=inj_args)
+            grad_residual, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_downsample_conv.call(grad_residual, layer_inputs[self.l_name + '_downsample'], layer_kernels[self.l_name + '_downsample'][0], inject=inject, inj_args=inj_args)
             grad_params.insert(0, grad_bias)
             grad_params.insert(0, grad_wt)
             bkwd_layer_inputs.update(bkwd_block_inputs)
@@ -67,11 +67,11 @@ class BackwardBasicBlock(tf.keras.layers.Layer):
         else:
             grad_residual = grad_downsample_in
 
-        grad_in, grad_gamma, grad_beta = self.backward_bn2(grad_downsample_in, layer_inputs[self.l_name + '_bn2'], layer_kernels[self.l_name + '_bn2'][0], layer_kernels[self.l_name + '_bn2'][1], layer_kernels[self.l_name + '_bn2_epsilon'])
+        grad_in, grad_gamma, grad_beta = self.backward_bn2.call(grad_downsample_in, layer_inputs[self.l_name + '_bn2'], layer_kernels[self.l_name + '_bn2'][0], layer_kernels[self.l_name + '_bn2'][1], layer_kernels[self.l_name + '_bn2_epsilon'])
         grad_params.insert(0, grad_beta)
         grad_params.insert(0, grad_gamma)
 
-        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv2(grad_in, layer_inputs[self.l_name + '_conv2'], layer_kernels[self.l_name + '_conv2'][0], inject=inject, inj_args=inj_args)
+        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv2.call(grad_in, layer_inputs[self.l_name + '_conv2'], layer_kernels[self.l_name + '_conv2'][0], inject=inject, inj_args=inj_args)
         grad_params.insert(0, grad_bias)
         grad_params.insert(0, grad_wt)
         bkwd_layer_inputs.update(bkwd_block_inputs)
@@ -82,11 +82,11 @@ class BackwardBasicBlock(tf.keras.layers.Layer):
 
         grad_in = self.backward_relu1(grad_in, layer_inputs[self.l_name + "_relu1"])
 
-        grad_in, grad_gamma, grad_beta = self.backward_bn1(grad_in, layer_inputs[self.l_name + '_bn1'], layer_kernels[self.l_name + '_bn1'][0], layer_kernels[self.l_name + '_bn1'][1], layer_kernels[self.l_name + '_bn1_epsilon'])
+        grad_in, grad_gamma, grad_beta = self.backward_bn1.call(grad_in, layer_inputs[self.l_name + '_bn1'], layer_kernels[self.l_name + '_bn1'][0], layer_kernels[self.l_name + '_bn1'][1], layer_kernels[self.l_name + '_bn1_epsilon'])
         grad_params.insert(0, grad_beta)
         grad_params.insert(0, grad_gamma)
 
-        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv1(grad_in, layer_inputs[self.l_name + '_conv1'], layer_kernels[self.l_name + '_conv1'][0], inject=inject, inj_args=inj_args)
+        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv1.call(grad_in, layer_inputs[self.l_name + '_conv1'], layer_kernels[self.l_name + '_conv1'][0], inject=inject, inj_args=inj_args)
         grad_params.insert(0, grad_bias)
         grad_params.insert(0, grad_wt)
         bkwd_layer_inputs.update(bkwd_block_inputs)
@@ -115,7 +115,7 @@ class BackwardBasicBlocks(tf.keras.layers.Layer):
 
         for i in range(len(self.backward_basics)-1, -1, -1):
             basic = self.backward_basics[i]
-            grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = basic(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
+            grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = basic.call(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
             bkwd_layer_inputs.update(bkwd_block_inputs)
             bkwd_layer_kernels.update(bkwd_block_kernels)
             bkwd_layer_outputs.update(bkwd_block_outputs)

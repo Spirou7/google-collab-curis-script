@@ -48,25 +48,25 @@ class BackwardResNetTypeI(tf.keras.Model):
         bkwd_layer_kernels = {}
         bkwd_layer_outputs = {}
 
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer4(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer4.call(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
         grad_params = block_grad_params + grad_params
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
          
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer3(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer3.call(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
         grad_params = block_grad_params + grad_params
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
         
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer2(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer2.call(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
         grad_params = block_grad_params + grad_params
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer1(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_layer1.call(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
         grad_params = block_grad_params + grad_params
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
@@ -74,11 +74,11 @@ class BackwardResNetTypeI(tf.keras.Model):
 
         grad_in = self.backward_relu1(grad_in, layer_inputs['relu1'])
 
-        grad_in, grad_gamma, grad_beta = self.backward_bn1(grad_in, layer_inputs['bn1'], layer_kernels['bn1'][0], layer_kernels['bn1'][1], layer_kernels['bn1_epsilon'])
+        grad_in, grad_gamma, grad_beta = self.backward_bn1.call(grad_in, layer_inputs['bn1'], layer_kernels['bn1'][0], layer_kernels['bn1'][1], layer_kernels['bn1_epsilon'])
         grad_params.insert(0, grad_beta)
         grad_params.insert(0, grad_gamma)
 
-        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv1(grad_in, layer_inputs['conv1'], layer_kernels['conv1'][0], inject=inject, inj_args=inj_args)
+        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv1.call(grad_in, layer_inputs['conv1'], layer_kernels['conv1'][0], inject=inject, inj_args=inj_args)
         grad_params.insert(0, grad_bias)
         grad_params.insert(0, grad_wt)
         bkwd_layer_inputs.update(bkwd_block_inputs)
