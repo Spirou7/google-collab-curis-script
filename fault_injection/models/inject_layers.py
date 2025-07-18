@@ -496,7 +496,13 @@ class InjectConv2D(tf.keras.layers.Conv2D):
                         print("injecting to target")
 
                         #print("before:", conv_out)
+                        before = conv_out
                         conv_out = inj_to_tensor(conv_out, inj_args)
+                        
+                        # Calculate and print magnitude difference
+                        magnitude_diff = tf.norm(conv_out - before)
+                        print(f"Magnitude difference after injection: {magnitude_diff}")
+                        
                         #print("after:", conv_out)
 
                     # TODO: Correction for INPUT_16 and WT_16

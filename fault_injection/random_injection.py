@@ -1,0 +1,408 @@
+import tensorflow as tf
+import random
+import numpy as np
+import os
+import csv
+import glob
+from models.inject_utils import choose_random_layer
+from models.resnet import resnet_18
+from models.backward_resnet import backward_resnet_18
+from models.resnet_nobn import resnet_18_nobn
+from models.backward_resnet_nobn import backward_resnet_18_nobn
+from models import efficientnet
+from models import backward_efficientnet
+from models import densenet
+from models import backward_densenet
+from models import nf_resnet
+from models import backward_nf_resnet
+import config
+from prepare_data import generate_datasets
+import math
+from models.inject_utils import *
+from injection import read_injection
+
+
+tf.config.set_soft_device_placement(True)
+# Keep seed consistent for reproducibility
+tf.random.set_seed(123)
+
+golden_grad_idx = {
+    'resnet18': -2,
+    'resnet18_nobn': -2,
+    'resnet18_sgd': -2,
+    'effnet': -4,
+    'densenet': -2,
+    'nfnet': -2
+}
+
+
+class RandomInjection:
+    def __init__(self):
+        self.model = ''
+        self.stage = ''
+        self.fmodel = ''
+        self.target_worker = -1
+        self.target_layer = ''
+        self.target_epoch = -1
+        self.target_step = -1
+        self.inj_pos = []
+        self.inj_values = []
+        self.learning_rate = 0.001
+        self.seed = 123
+        
+        # Available options based on CSV analysis
+        self.available_models = ['resnet18']
+        self.available_stages = ['fwrd_inject', 'bkwd_inject']
+        self.available_fmodels = ['RD', 'WT', 'INPUT']
+        self.available_layers = [
+            'basicblock_2_basic_0_conv2',
+            'basicblock_4_basic_0_conv2',
+            'basicblock_4_basic_0_downsample_grad_in'
+        ]
+        self.learning_rate_range = [0.0001, 0.001, 0.01, 0.1]
+        
+    def get_random_injection_params(self, model=None, stage=None, fmodel=None, 
+                                  target_layer=None, target_epoch=None, 
+                                  target_step=None, learning_rate=None):
+        """
+        Generate random injection parameters. If parameters are provided, use them;
+        otherwise generate random ones.
+        """
+        # Set parameters or generate random ones
+        self.model = model if model else random.choice(self.available_models)
+        self.stage = stage if stage else random.choice(self.available_stages)
+        self.fmodel = fmodel if fmodel else random.choice(self.available_fmodels)
+        self.target_worker = random.randint(1, 5)  # Based on CSV data
+        self.target_layer = target_layer if target_layer else choose_random_layer(self.model, self.stage) 
+        self.target_epoch = target_epoch if target_epoch else random.randint(1, 30)
+        self.target_step = target_step if target_step else random.randint(1, 50)
+        self.learning_rate = learning_rate if learning_rate else random.choice(self.learning_rate_range)
+        
+        # Injection position will be randomly selected by get_inj_args
+        self.inj_pos = "random"
+        
+        # Injection value will be randomly selected by get_inj_args
+        self.inj_values = "random"
+            
+        return {
+            'model': self.model,
+            'stage': self.stage,
+            'fmodel': self.fmodel,
+            'target_worker': self.target_worker,
+            'target_layer': self.target_layer,
+            'target_epoch': self.target_epoch,
+            'target_step': self.target_step,
+            'inj_pos': self.inj_pos,
+            'inj_values': self.inj_values,
+            'learning_rate': self.learning_rate,
+            'seed': self.seed
+        }
+    
+    def save_injection_config(self, filename='random_injection_config.csv'):
+        """Save the current injection configuration to a CSV file"""
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['model', self.model])
+            writer.writerow(['stage', self.stage])
+            writer.writerow(['fmodel', self.fmodel])
+            writer.writerow(['target_worker', self.target_worker])
+            writer.writerow(['target_layer', self.target_layer])
+            writer.writerow(['target_epoch', self.target_epoch])
+            writer.writerow(['target_step', self.target_step])
+            writer.writerow(['inj_pos', self.inj_pos])
+            writer.writerow(['inj_values', self.inj_values])
+            writer.writerow(['learning_rate', self.learning_rate])
+            writer.writerow(['seed', self.seed])
+    
+    def get_model(self, m_name, seed):
+        """Get model and backward model based on reproduce_injections.py pattern"""
+        if m_name == 'resnet18' or m_name == 'resnet18_sgd':
+            model = resnet_18(seed, m_name)
+            model.build(input_shape=(None, config.image_height, config.image_width, config.channels))
+            back_model = backward_resnet_18(m_name)
+
+        elif m_name == 'resnet18_nobn':
+            model = resnet_18_nobn(seed)
+            model.build(input_shape=(None, config.image_height, config.image_width, config.channels))
+            back_model = backward_resnet_18_nobn()
+
+        elif m_name == 'effnet':
+            model = efficientnet.efficient_net_b0(seed)
+            model.build(input_shape=(None, config.image_height, config.image_width, config.channels))
+            back_model = backward_efficientnet.backward_efficient_net_b0()
+
+        elif m_name == 'densenet':
+            model = densenet.densenet_121(seed)
+            model.build(input_shape=(None, config.image_height, config.image_width, config.channels))
+            back_model = backward_densenet.backward_densenet_121()
+
+        elif m_name == 'nfnet':
+            model = nf_resnet.NF_ResNet(num_classes=10, seed=seed, alpha=1, stochdepth_rate=0)
+            model.build(input_shape=(None, config.image_height, config.image_width, config.channels))
+            back_model = backward_nf_resnet.BackwardNF_ResNet(num_classes=10, alpha=1, stochdepth_rate=0)
+
+        return model, back_model
+
+    def run_training_simulation(self):
+        """Run the training simulation with the current injection parameters"""
+        print(f"Running training simulation with parameters:")
+        print(f"Model: {self.model}")
+        print(f"Stage: {self.stage}")
+        print(f"FModel: {self.fmodel}")
+        print(f"Target Layer: {self.target_layer}")
+        print(f"Target Epoch: {self.target_epoch}")
+        print(f"Target Step: {self.target_step}")
+        print(f"Injection Position: {self.inj_pos}")
+        print(f"Injection Value: {self.inj_values}")
+        print(f"Learning Rate: {self.learning_rate}")
+        print(f"Seed: {self.seed}")
+        
+        # Save config for reference
+        self.save_injection_config()
+        
+        # Configure TensorFlow for CPU on MacOS
+        tf.config.set_visible_devices([], 'GPU')  # Disable GPU
+        
+        # Get datasets
+        train_dataset, valid_dataset, train_count, valid_count = generate_datasets(self.seed)
+        
+        # Get model and backward model
+        model, back_model = self.get_model(self.model, self.seed)
+        
+        # Setup optimizer based on model type
+        if 'sgd' in self.model:
+            lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+                initial_learning_rate=self.learning_rate,
+                decay_steps=2000,
+                end_learning_rate=0.001)
+            model.optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+        elif 'effnet' in self.model:
+            lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+                initial_learning_rate=self.learning_rate,
+                decay_steps=2000,
+                end_learning_rate=0.0005)
+            model.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+        else:
+            lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+                initial_learning_rate=self.learning_rate,
+                decay_steps=5000,
+                end_learning_rate=0.0001)
+            model.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+        
+        # Setup metrics
+        train_loss = tf.keras.metrics.Mean(name='train_loss')
+        train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+        valid_loss = tf.keras.metrics.Mean(name='valid_loss')
+        valid_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='valid_accuracy')
+        
+        # Training functions (from reproduce_injections.py)
+        @tf.function
+        def train_step(iterator):
+            images, labels = next(iterator)
+            with tf.GradientTape() as tape:
+                outputs, _, _, l_outputs = model(images, training=True, inject=False)
+                predictions = outputs['logits']
+                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+
+            tvars = model.trainable_variables
+            gradients = tape.gradient(avg_loss, tvars)
+            model.optimizer.apply_gradients(grads_and_vars=list(zip(gradients, tvars)))
+
+            train_loss.update_state(avg_loss)
+            train_accuracy.update_state(labels, predictions)
+            return avg_loss
+
+        @tf.function
+        def fwrd_inj_train_step1(iter_inputs, inj_layer):
+            images, labels = iter_inputs
+            outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
+            predictions = outputs['logits']
+            return l_inputs[inj_layer], l_kernels[inj_layer], l_outputs[inj_layer]
+
+        def fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag):
+            with tf.GradientTape() as tape:
+                images, labels = iter_inputs
+                outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=inj_flag, inj_args=inj_args)
+                predictions = outputs['logits']
+                grad_start = outputs['grad_start']
+                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+
+            man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
+            manual_gradients, _, _, _ = back_model.call(man_grad_start, l_inputs, l_kernels, inject=False, inj_args=None)
+
+            gradients = manual_gradients + golden_gradients[golden_grad_idx[self.model]:]
+            model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
+
+            train_loss.update_state(avg_loss)
+            train_accuracy.update_state(labels, predictions)
+            return avg_loss
+
+        def bkwd_inj_train_step1(iter_inputs, inj_layer):
+            images, labels = iter_inputs
+            with tf.GradientTape() as tape:
+                outputs, l_inputs, l_kernels, _ = model(images, training=True, inject=False)
+                predictions = outputs['logits']
+                grad_start = outputs['grad_start']
+                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+            man_grad_start = tape.gradient(avg_loss, grad_start)
+            _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model.call(man_grad_start, l_inputs, l_kernels, inject=False, inj_args=None)
+            return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
+
+        def bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag):
+            images, labels = iter_inputs
+            with tf.GradientTape() as tape:
+                outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
+                predictions = outputs['logits']
+                grad_start = outputs['grad_start']
+                loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+                avg_loss = tf.nn.compute_average_loss(loss, global_batch_size=config.BATCH_SIZE)
+            man_grad_start, golden_gradients = tape.gradient(avg_loss, [grad_start, model.trainable_variables])
+            manual_gradients, _, _, _ = back_model.call(man_grad_start, l_inputs, l_kernels, inject=inj_flag, inj_args=inj_args)
+
+            gradients = manual_gradients + golden_gradients[golden_grad_idx[self.model]:]
+            model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
+
+            train_loss.update_state(avg_loss)
+            train_accuracy.update_state(labels, predictions)
+            return avg_loss
+
+        @tf.function
+        def valid_step(iterator):
+            images, labels = next(iterator)
+            outputs, _, _, _ = model(images, training=False)
+            predictions = outputs['logits']
+            v_loss = tf.keras.losses.sparse_categorical_crossentropy(labels, predictions)
+            v_loss = tf.nn.compute_average_loss(v_loss, global_batch_size=config.BATCH_SIZE)
+            valid_loss.update_state(v_loss)
+            valid_accuracy.update_state(labels, predictions)
+
+        # Training loop
+        steps_per_epoch = math.ceil(train_count / config.BATCH_SIZE)
+        valid_steps_per_epoch = math.ceil(valid_count / config.VALID_BATCH_SIZE)
+        
+        target_epoch = self.target_epoch
+        target_step = self.target_step
+        
+        # Open log file
+        train_recorder = open(f"random_injection_log_{self.model}_{self.stage}_{self.fmodel}.txt", 'w')
+        
+        def record(recorder, text):
+            recorder.write(text)
+            recorder.flush()
+            print(text.strip())
+        
+        record(train_recorder, f"Inject to epoch: {target_epoch}\n")
+        record(train_recorder, f"Inject to step: {target_step}\n")
+        
+        start_epoch = target_epoch
+        total_epochs = config.EPOCHS
+        early_terminate = False
+        epoch = start_epoch
+        
+        while epoch < total_epochs:
+            if early_terminate:
+                break
+            train_loss.reset_state()
+            train_accuracy.reset_state()
+            valid_loss.reset_state()
+            valid_accuracy.reset_state()
+            step = 0
+
+            train_iterator = iter(train_dataset)
+            for step in range(steps_per_epoch):
+                print(f"epoch: {epoch}, step: {step}")
+                train_loss.reset_state()
+                train_accuracy.reset_state()
+                if early_terminate:
+                    break
+                    
+                if epoch != target_epoch or step != target_step:
+                    losses = train_step(train_iterator)
+                else:
+                    print("performing injection!")
+                    iter_inputs = next(train_iterator)
+                    inj_layer = self.target_layer
+
+                    if 'fwrd' in self.stage:
+                        print("forward injection")
+                        l_inputs, l_kernels, l_outputs = fwrd_inj_train_step1(iter_inputs, inj_layer)
+                    else:
+                        print("backward injection")
+                        l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
+
+                    # Create injection args with random position selection
+                    inj_args, inj_flag = get_inj_args(InjType[self.fmodel], None, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder, self)
+
+                    if 'fwrd' in self.stage:
+                        losses = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                    else:
+                        losses = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+
+                record(train_recorder, f"Epoch: {epoch}/{total_epochs}, step: {step}/{steps_per_epoch}, loss: {train_loss.result():.5f}, accuracy: {train_accuracy.result():.5f}\n")
+
+                if not np.isfinite(train_loss.result()):
+                    record(train_recorder, "Encounter NaN! Terminate training!\n")
+                    early_terminate = True
+
+            if not early_terminate:
+                valid_iterator = iter(valid_dataset)
+                for _ in range(valid_steps_per_epoch):
+                    valid_step(valid_iterator)
+
+                record(train_recorder, f"End of epoch: {epoch}/{config.EPOCHS}, train loss: {train_loss.result():.5f}, train accuracy: {train_accuracy.result():.5f}, valid loss: {valid_loss.result():.5f}, valid accuracy: {valid_accuracy.result():.5f}\n")
+
+                # NaN value in validation
+                if not np.isfinite(valid_loss.result()):
+                    record(train_recorder, "Encounter NaN! Terminate training!\n")
+                    early_terminate = True
+
+            epoch += 1
+
+        train_recorder.close()
+        
+        return {
+            'final_train_accuracy': train_accuracy.result().numpy(),
+            'final_train_loss': train_loss.result().numpy(),
+            'final_valid_accuracy': valid_accuracy.result().numpy(),
+            'final_valid_loss': valid_loss.result().numpy(),
+            'early_terminate': early_terminate,
+            'injection_params': self.get_random_injection_params()
+        }
+
+
+def random_fault_injection(model=None, stage=None, fmodel=None, 
+                          target_layer=None, target_epoch=None, 
+                          target_step=None, learning_rate=None):
+    """
+    Main function to run random fault injection.
+    If parameters are not provided, they will be randomly selected.
+    """
+    injector = RandomInjection()
+    params = injector.get_random_injection_params(
+        model=model, stage=stage, fmodel=fmodel,
+        target_layer=target_layer, target_epoch=target_epoch,
+        target_step=target_step, learning_rate=learning_rate
+    )
+    
+    print("Generated Random Injection Parameters:")
+    for key, value in params.items():
+        print(f"  {key}: {value}")
+    print("\n" + "="*50 + "\n")
+    
+    # Run the simulation
+    results = injector.run_training_simulation()
+    
+    return results
+
+
+if __name__ == "__main__":
+    # Example usage - completely random parameters
+    print("Running with completely random parameters...")
+    results = random_fault_injection()
+    
+    print("\n" + "="*50)
+    print("SIMULATION COMPLETE")
+    print("="*50)

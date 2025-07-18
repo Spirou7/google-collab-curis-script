@@ -941,20 +941,20 @@ def choose_random_layer(model, phase):
 
 def get_inj_args(inj_type, strategy, inj_layer, inputs, kernels, outputs, train_recorder, db_st):
     np.random.seed(None)
-    inj_replica = np.random.randint(strategy.num_replicas_in_sync)
+    inj_replica = np.random.randint(1)
     db_st.target_worker = inj_replica
     record(train_recorder, "Inject worker: {}\n".format(inj_replica))
     record(train_recorder, "Inject layer: {}\n".format(inj_layer))
 
     if is_input_target(inj_type):
-        target = inputs.values[inj_replica].numpy()
+        target = inputs.numpy()
     elif is_weight_target(inj_type):
         if type(kernels) == list:
-            target = kernels[0].values[inj_replica].numpy()
+            target = kernels[0].numpy()
         else:
-            target = kernels.values[inj_replica].numpy()
+            target = kernels.numpy()
     elif is_output_target(inj_type):
-        target = outputs.values[inj_replica].numpy()
+        target = outputs.numpy()
     else:
         print("ERROR: Unsupported inject type!")
         exit(2)

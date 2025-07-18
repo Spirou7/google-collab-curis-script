@@ -81,8 +81,13 @@ def get_model(m_name, seed):
 
     return model, back_model
 
+class Object():
+    pass;
 def main():
-    args = parse_args()
+    #args = parse_args()
+    args = Object()
+    args.file = "fault_injection/injections/resnet18/inj_immediate_infs_nans.csv"
+    
     if args is None:
         exit()
     

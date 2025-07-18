@@ -92,6 +92,13 @@ class BasicBlock(tf.keras.layers.Layer):
         layer_inputs[self.conv2.l_name] = x
         layer_kernels[self.conv2.l_name] = self.conv2.weights
         x, conv_x = self.conv2(x, inject=inject, inj_args=inj_args)
+        
+        # Print magnitudes of both outputs
+        x_magnitude = tf.norm(x)
+        conv_x_magnitude = tf.norm(conv_x)
+        #print(f"x magnitude: {x_magnitude}")
+        #print(f"conv_x magnitude: {conv_x_magnitude}")
+        
         layer_outputs[self.conv2.l_name] = conv_x
 
 
@@ -134,6 +141,11 @@ class BasicBlocks(tf.keras.layers.Layer):
         for i in range(len(self.basics)):
             basic = self.basics[i]
             x, block_inputs, block_kernels, block_outputs = basic(x, training=training, inject=inject, inj_args=inj_args)
+            
+            # Print magnitude of basic block output
+            x_magnitude = tf.norm(x)
+            print(f"Basic block {i} output magnitude: {x_magnitude}")
+            
             layer_inputs.update(block_inputs)
             layer_kernels.update(block_kernels)
             layer_outputs.update(block_outputs)

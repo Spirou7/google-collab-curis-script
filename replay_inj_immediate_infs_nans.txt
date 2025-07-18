@@ -5,6 +5,3 @@ Inject worker: 1
 Inject layer: basicblock_2_basic_0_conv2
 Shape for target layer is (1024, 8, 8, 128)
 Position is (107, 3, 3, 85), Golden data is -1.2515616416931152, inject data is 2.86871514043344e+24
-Epoch: 19/80, step: 1/49, loss: 4.95084, accuracy: 0.09277
-Epoch: 19/80, step: 2/49, loss: 2.71839, accuracy: 0.11523
-Epoch: 19/80, step: 3/49, loss: 2.63246, accuracy: 0.11426
