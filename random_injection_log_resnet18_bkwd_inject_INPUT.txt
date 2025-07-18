@@ -1,9 +1,2 @@
-Inject to epoch: 24
-Inject to step: 7
-Epoch: 24/80, step: 0/49, loss: 2.87175, accuracy: 0.10352
-Epoch: 24/80, step: 1/49, loss: 4.93709, accuracy: 0.09863
-Epoch: 24/80, step: 2/49, loss: 2.66947, accuracy: 0.11914
-Epoch: 24/80, step: 3/49, loss: 2.65539, accuracy: 0.10547
-Epoch: 24/80, step: 4/49, loss: 2.49075, accuracy: 0.11523
-Epoch: 24/80, step: 5/49, loss: 2.35445, accuracy: 0.17285
-Epoch: 24/80, step: 6/49, loss: 2.39271, accuracy: 0.16602
+Inject to epoch: 1
+Inject to step: 42

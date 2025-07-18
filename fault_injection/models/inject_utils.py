@@ -105,7 +105,7 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
         positions = []
         l = len(shape)
 
-        total = np.product(shape) / n_inj
+        total = np.prod(shape) / n_inj
         start = np.random.randint(total)
         end = np.random.randint(start+1, total) if n_repeat != 1 else start + 1
         start_pos = np.unravel_index(start * n_inj, shape)
@@ -145,7 +145,7 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
 
     def get_random_correct(target):
         shape = target.shape
-        rd_pos = np.unravel_index(np.random.randint(np.product(shape)), shape)
+        rd_pos = np.unravel_index(np.random.randint(np.prod(shape)), shape)
         return target[rd_pos]
 
     mask = np.ones(shape)

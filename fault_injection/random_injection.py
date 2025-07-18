@@ -401,7 +401,7 @@ def random_fault_injection(model=None, stage=None, fmodel=None,
 if __name__ == "__main__":
     # Example usage - completely random parameters
     print("Running with completely random parameters...")
-    results = random_fault_injection()
+    results = random_fault_injection(target_step=1)
     
     print("\n" + "="*50)
     print("SIMULATION COMPLETE")
