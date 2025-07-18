@@ -152,6 +152,7 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
     delta = np.zeros(shape)
 
     db_st.inj_pos = positions
+    db_st.inj_values = []
     for pos in positions:
         ori_val = target[pos]
 
@@ -941,7 +942,7 @@ def choose_random_layer(model, phase):
 
 def get_inj_args(inj_type, strategy, inj_layer, inputs, kernels, outputs, train_recorder, db_st):
     np.random.seed(None)
-    inj_replica = np.random.randint(1)
+    inj_replica = 0  # Single CPU execution
     db_st.target_worker = inj_replica
     record(train_recorder, "Inject worker: {}\n".format(inj_replica))
     record(train_recorder, "Inject layer: {}\n".format(inj_layer))
@@ -966,16 +967,13 @@ def get_inj_args(inj_type, strategy, inj_layer, inputs, kernels, outputs, train_
     if type(kernels) == list:
         golden_weights = []
         for elem in kernels:
-            wt_em = elem.values[0].numpy()
+            wt_em = elem.numpy()  # Remove .values[0] for CPU execution
             golden_weights.append(wt_em)
     else:
-        golden_weights = kernels.values[0].numpy()
+        golden_weights = kernels.numpy()  # Remove .values[0] for CPU execution
 
-    np_array = np.zeros(strategy.num_replicas_in_sync, dtype=bool)
-    np_array[inj_replica] = True
-    inj_flag_dataset = tf.data.Dataset.from_tensor_slices(np_array).repeat().batch(strategy.num_replicas_in_sync)
-    inj_flag_iterator = iter(strategy.experimental_distribute_dataset(inj_flag_dataset))
-    inj_flag = next(inj_flag_iterator)
+    # For CPU execution, just return True as injection flag
+    inj_flag = True
 
     return InjArgs(inj_replica, inj_layer, inj_type, golden_weights, outputs, mask, delta), inj_flag
 
