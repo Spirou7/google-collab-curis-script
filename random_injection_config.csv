@@ -1,11 +1,11 @@
 model,resnet18
-stage,bkwd_inject
+stage,fwrd_inject
 fmodel,INPUT
-target_worker,3
-target_layer,basicblock_2_basic_1_conv2_grad_in
-target_epoch,23
+target_worker,4
+target_layer,basicblock_4_basic_1_conv2
+target_epoch,4
 target_step,1
 inj_pos,random
 inj_values,random
-learning_rate,0.0001
+learning_rate,0.1
 seed,123

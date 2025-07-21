@@ -96,8 +96,8 @@ class BasicBlock(tf.keras.layers.Layer):
         # Print magnitudes of both outputs
         x_magnitude = tf.norm(x)
         conv_x_magnitude = tf.norm(conv_x)
-        #print(f"x magnitude: {x_magnitude}")
-        #print(f"conv_x magnitude: {conv_x_magnitude}")
+        print(f"x magnitude: {x_magnitude}")
+        print(f"conv_x magnitude: {conv_x_magnitude}")
         
         layer_outputs[self.conv2.l_name] = conv_x
 
@@ -108,6 +108,11 @@ class BasicBlock(tf.keras.layers.Layer):
         layer_kernels[self.l_name + "_bn2_moving_mean_var"] = self.bn2.weights[2:]
         x = self.bn2(x, training=training)
         layer_outputs[self.l_name + "_bn2"] = x
+
+        x_magnitude = tf.norm(x)
+        conv_x_magnitude = tf.norm(conv_x)
+        print(f"x magnitude after bn2: {x_magnitude}")
+        print(f"conv_x magnitude after bn2: {conv_x_magnitude}")
 
 
         x = tf.keras.layers.add([residual, x])

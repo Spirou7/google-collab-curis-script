@@ -1,5 +1,7 @@
 from enum import Enum
 import tensorflow as tf
+import math
+import sys
 import numpy as np
 import struct
 
@@ -167,7 +169,8 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
 
         # Modified for worst case
         # Randomly choose a value between 1e16 to 1.3e18
-        #val_delta = np.random.uniform(low=1e16, high=1e18)
+        # val_delta = np.random.uniform(low=1e16, high=1e18)
+        val_delta = sys.float_info.max
         mask[pos] = 0
         delta[pos] = val_delta
 
