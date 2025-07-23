@@ -156,6 +156,3 @@ class BasicBlocks(tf.keras.layers.Layer):
             layer_outputs.update(block_outputs)
 
         return x, layer_inputs, layer_kernels, layer_outputs
-
-
-

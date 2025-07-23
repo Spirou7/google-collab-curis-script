@@ -120,9 +120,5 @@ class ResNetTypeI(tf.keras.Model):
 
         return outputs, layer_inputs, layer_kernels, layer_outputs
 
-
-
-
 def resnet_18(seed, m_name):
     return ResNetTypeI(layer_params=[2, 2, 2, 2], seed=seed, drop_out_rate=0 if 'sgd' in m_name else 0.15)
-

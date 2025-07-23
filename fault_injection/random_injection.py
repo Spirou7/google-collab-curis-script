@@ -51,14 +51,9 @@ class RandomInjection:
         self.seed = 123
         
         # Available options based on CSV analysis
-        self.available_models = ['resnet18']
+        self.available_models = ['resnet18', 'resnet18_sgd', 'resnet18_nobn', 'effnet', 'densenet', 'nfnet']
         self.available_stages = ['fwrd_inject', 'bkwd_inject']
-        self.available_fmodels = ['RD', 'WT', 'INPUT']
-        self.available_layers = [
-            'basicblock_2_basic_0_conv2',
-            'basicblock_4_basic_0_conv2',
-            'basicblock_4_basic_0_downsample_grad_in'
-        ]
+        self.available_fmodels = ['INPUT', 'INPUT_16', 'WT', 'WT_16', "RBFLIP", "RD", "RD_CORRECT", "ZERO", "N16_RD", "N16_RD_CORRECT", "RD_GLB", "RD_CORRECT_GLB", "N64_INPUT", "N64_WT", "N64_INPUT_16", "N64_WT_16", "N64_INPUT_GLB", "N64_WT_GLB"]
         self.learning_rate_range = [0.0001, 0.001, 0.01, 0.1]
         
     def get_random_injection_params(self, model=None, stage=None, fmodel=None, 

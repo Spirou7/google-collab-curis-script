@@ -107,11 +107,21 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
         positions = []
         l = len(shape)
 
+        # figure out how many elements per number of injections
         total = np.prod(shape) / n_inj
+
+        # where to start the injection in one injection
         start = np.random.randint(total)
+
+        # where to end the injection in one injection
         end = np.random.randint(start+1, total) if n_repeat != 1 else start + 1
+
+        # where to start the injection 
         start_pos = np.unravel_index(start * n_inj, shape)
         end_pos = np.unravel_index(end * n_inj, shape)
+        
+
+        # for every element 
         for flat in range(start * n_inj, end * n_inj):
             positions.append(np.unravel_index(flat, shape))
         return positions
@@ -170,6 +180,8 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
         # Modified for worst case
         # Randomly choose a value between 1e16 to 1.3e18
         # val_delta = np.random.uniform(low=1e16, high=1e18)
+
+        # on cpu, the max value is 1.7976931348623157e+308
         val_delta = sys.float_info.max
         mask[pos] = 0
         delta[pos] = val_delta
