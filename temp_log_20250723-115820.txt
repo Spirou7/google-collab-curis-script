@@ -1,0 +1,35 @@
+Inject to epoch: 21
+Inject to step: 10
+Epoch: 0/80, step: 0/49, loss: 2.87175, accuracy: 0.10352
+Epoch: 0/80, step: 1/49, loss: 31.65038, accuracy: 0.08594
+Epoch: 0/80, step: 2/49, loss: 16.78333, accuracy: 0.08398
+Epoch: 0/80, step: 3/49, loss: 12.10900, accuracy: 0.11230
+Epoch: 0/80, step: 4/49, loss: 11.57404, accuracy: 0.09961
+Epoch: 0/80, step: 5/49, loss: 6.01211, accuracy: 0.09473
+Epoch: 0/80, step: 6/49, loss: 4.32737, accuracy: 0.09473
+Epoch: 0/80, step: 7/49, loss: 3.37212, accuracy: 0.08984
+Epoch: 0/80, step: 8/49, loss: 3.83251, accuracy: 0.11523
+Epoch: 0/80, step: 9/49, loss: 2.50296, accuracy: 0.12695
+Epoch: 0/80, step: 10/49, loss: 2.95791, accuracy: 0.11719
+Epoch: 0/80, step: 11/49, loss: 2.45911, accuracy: 0.11133
+Epoch: 0/80, step: 12/49, loss: 2.33834, accuracy: 0.10645
+Epoch: 0/80, step: 13/49, loss: 2.37041, accuracy: 0.12109
+Epoch: 0/80, step: 14/49, loss: 2.48362, accuracy: 0.10254
+Epoch: 0/80, step: 15/49, loss: 2.41533, accuracy: 0.09766
+Epoch: 0/80, step: 16/49, loss: 2.33569, accuracy: 0.09473
+Epoch: 0/80, step: 17/49, loss: 2.34459, accuracy: 0.08594
+Epoch: 0/80, step: 18/49, loss: 2.39520, accuracy: 0.09766
+Epoch: 0/80, step: 19/49, loss: 2.32789, accuracy: 0.10156
+Epoch: 0/80, step: 20/49, loss: 2.50071, accuracy: 0.09473
+Epoch: 0/80, step: 21/49, loss: 2.35086, accuracy: 0.09473
+Epoch: 0/80, step: 22/49, loss: 2.39022, accuracy: 0.10645
+Epoch: 0/80, step: 23/49, loss: 2.34377, accuracy: 0.11133
+Epoch: 0/80, step: 24/49, loss: 2.34140, accuracy: 0.09961
+Epoch: 0/80, step: 25/49, loss: 2.37066, accuracy: 0.09863
+Epoch: 0/80, step: 26/49, loss: 2.35730, accuracy: 0.11133
+Epoch: 0/80, step: 27/49, loss: 2.45300, accuracy: 0.10449
+Epoch: 0/80, step: 28/49, loss: 2.32864, accuracy: 0.11035
+Epoch: 0/80, step: 29/49, loss: 2.31240, accuracy: 0.11328
+Epoch: 0/80, step: 30/49, loss: 2.56723, accuracy: 0.09668
+Epoch: 0/80, step: 31/49, loss: 2.45180, accuracy: 0.10156
+Epoch: 0/80, step: 32/49, loss: 2.32023, accuracy: 0.11719

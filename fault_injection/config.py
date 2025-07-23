@@ -9,4 +9,3 @@ image_height = 32
 image_width = 32
 channels = 3
 golden_model_dir = "ISCA_AE_CKPT/"
-

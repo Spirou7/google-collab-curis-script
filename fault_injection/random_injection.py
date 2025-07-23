@@ -4,6 +4,8 @@ import numpy as np
 import os
 import csv
 import glob
+import datetime
+import matplotlib.pyplot as plt
 from models.inject_utils import choose_random_layer
 from models.resnet import resnet_18
 from models.backward_resnet import backward_resnet_18
@@ -290,8 +292,21 @@ class RandomInjection:
         target_epoch = self.target_epoch
         target_step = self.target_step
         
-        # Open log file
-        train_recorder = open(f"random_injection_log_{self.model}_{self.stage}_{self.fmodel}.txt", 'w')
+        # Initialize plot
+        plt.ion()
+        fig, ax = plt.subplots()
+        steps_history, accuracy_history = [], []
+        line, = ax.plot(steps_history, accuracy_history, 'r-')
+        ax.set_xlabel("Global Step")
+        ax.set_ylabel("Train Accuracy")
+        ax.set_title("Real-time Training Accuracy")
+        ax.grid(True)
+        plt.show()
+
+        # Create a timestamp and a temporary log file
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        temp_log_file = f"temp_log_{timestamp}.txt"
+        train_recorder = open(temp_log_file, 'w')
         
         def record(recorder, text):
             recorder.write(text)
@@ -301,7 +316,7 @@ class RandomInjection:
         record(train_recorder, f"Inject to epoch: {target_epoch}\n")
         record(train_recorder, f"Inject to step: {target_step}\n")
         
-        start_epoch = target_epoch
+        start_epoch = 0
         total_epochs = config.EPOCHS
         early_terminate = False
         epoch = start_epoch
@@ -364,12 +379,23 @@ class RandomInjection:
 
                 record(train_recorder, f"Epoch: {epoch}/{total_epochs}, step: {step}/{steps_per_epoch}, loss: {train_loss.result():.5f}, accuracy: {train_accuracy.result():.5f}\n")
 
+                # Update plot
+                global_step = epoch * steps_per_epoch + step
+                steps_history.append(global_step)
+                accuracy_history.append(train_accuracy.result().numpy())
+                
+                line.set_xdata(steps_history)
+                line.set_ydata(accuracy_history)
+                
+                ax.relim()
+                ax.autoscale_view()
+                
+                fig.canvas.draw()
+                fig.canvas.flush_events()
 
                 if not np.isfinite(train_loss.result()):
                     record(train_recorder, "Encounter NaN! Terminate training!\n")
-
-                    # don't early terminate for now
-                    # early_terminate = True
+                    early_terminate = True
 
             if not early_terminate:
                 valid_iterator = iter(valid_dataset)
@@ -378,15 +404,27 @@ class RandomInjection:
 
                 record(train_recorder, f"End of epoch: {epoch}/{config.EPOCHS}, train loss: {train_loss.result():.5f}, train accuracy: {train_accuracy.result():.5f}, valid loss: {valid_loss.result():.5f}, valid accuracy: {valid_accuracy.result():.5f}\n")
 
-                # NaN value in validation
-                if not np.isfinite(valid_loss.result()):
-                    record(train_recorder, "Encounter NaN! Terminate training!\n")
-                    early_terminate = True
-
             epoch += 1
 
         train_recorder.close()
         
+        result_folder = "simulation_results/NaN"
+            
+        os.makedirs(result_folder, exist_ok=True)
+        
+        final_log_filename = f"{self.model}_{self.stage}_{self.fmodel}_{timestamp}.txt"
+        final_log_path = os.path.join(result_folder, final_log_filename)
+        
+        # Move the log file
+        os.rename(temp_log_file, final_log_path)
+
+        # Save the plot
+        plot_filename = f"{self.model}_{self.stage}_{self.fmodel}_{timestamp}_accuracy_plot.png"
+        plot_path = os.path.join(result_folder, plot_filename)
+        fig.savefig(plot_path)
+        print(f"Accuracy plot saved to {plot_path}")
+        plt.close(fig)
+
         return {
             'final_train_accuracy': train_accuracy.result().numpy(),
             'final_train_loss': train_loss.result().numpy(),
@@ -430,7 +468,7 @@ if __name__ == "__main__":
     # Example usage - completely random parameters
     print("Running with completely random parameters...")
 
-    results = random_fault_injection(model='resnet18', target_step=1, target_epoch=4, learning_rate=0.1, min_val=1e16, max_val=1e18)
+    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=30, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.1, min_val=1e16, max_val=1e18)
     
     print("\n" + "="*50)
     print("SIMULATION COMPLETE")
