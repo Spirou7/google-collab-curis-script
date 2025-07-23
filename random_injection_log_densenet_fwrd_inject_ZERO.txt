@@ -1,0 +1,9 @@
+Inject to epoch: 4
+Inject to step: 1
+Epoch: 4/80, step: 0/49, loss: 2.49588, accuracy: 0.11133
+Inject worker: 0
+Inject layer: densenet_dense_block_3_bottleneck_8_conv2
+Shape for target layer is (1024, 2, 2, 32)
+Start injection at position (np.int64(222), np.int64(1), np.int64(0), np.int64(27))
+End injection at position (np.int64(222), np.int64(1), np.int64(0), np.int64(27))
+Position is (np.int64(222), np.int64(1), np.int64(0), np.int64(27)), Golden data is -4.445038318634033, inject data is 6.846352517177206e+17

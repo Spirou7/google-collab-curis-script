@@ -95,7 +95,13 @@ class BackwardDenseBlock(tf.keras.layers.Layer):
         grad_in_split = [grad_in_0] + tf.split(grad_in_after, self.num_layers, axis=-1)
 
         for i in range(self.num_layers-1, -1, -1):
-            grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_bottle_necks[i](grad_in_split[i+1], layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
+            grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_bottle_necks[i](
+                grad_in_split[i+1], 
+                layer_inputs=layer_inputs, 
+                layer_kernels=layer_kernels, 
+                inject=inject, 
+                inj_args=inj_args
+            )
             grad_params = block_grad_params + grad_params
             bkwd_layer_inputs.update(bkwd_block_inputs)
             bkwd_layer_kernels.update(bkwd_block_kernels)
@@ -235,62 +241,111 @@ class BackwardDenseNet(tf.keras.Model):
         bkwd_layer_outputs = {}
 
         # dense block 4
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_4(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_4(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
         # transition 3
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_transition_3(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_transition_3(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
 
         # dense block 3
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_3(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_3(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
 
         # transition 2
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_transition_2(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_transition_2(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
 
         # dense block 2
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_2(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_2(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
 
         # trnasition 1
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_transition_1(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_transition_1(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
 
         # dense block 1
-        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_1(grad_in, layer_inputs, layer_kernels, inject=inject, inj_args=inj_args)
-        grad_params = block_grad_params + grad_params
+        grad_in, block_grad_params, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_dense_block_1(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **block_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)
 
 
         # MOD: replace pool with conv
-        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv_p(grad_in, layer_inputs[self.l_name + '_conv_p'], layer_kernels[self.l_name + '_conv_p'][0], inject=inject, inj_args=inj_args)
+        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv_p(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            layer_name="densenet_conv_p", 
+            inject=inject, 
+            inj_args=inj_args
+        )
         grad_params.insert(0, grad_bias)
         grad_params.insert(0, grad_wt)
         bkwd_layer_inputs.update(bkwd_block_inputs)
@@ -312,9 +367,15 @@ class BackwardDenseNet(tf.keras.Model):
         grad_params.insert(0, grad_gamma)
 
         # conv
-        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv(grad_in, layer_inputs[self.l_name + '_conv'], layer_kernels[self.l_name + '_conv'][0], inject=inject, inj_args=inj_args)
-        grad_params.insert(0, grad_bias)
-        grad_params.insert(0, grad_wt)
+        grad_in, grad_wt, grad_bias, bkwd_block_inputs, bkwd_block_kernels, bkwd_block_outputs = self.backward_conv(
+            grad_in, 
+            layer_inputs=layer_inputs, 
+            layer_kernels=layer_kernels, 
+            layer_name="densenet_conv", 
+            inject=inject, 
+            inj_args=inj_args
+        )
+        grad_params = {**grad_params, **conv_grad_params}
         bkwd_layer_inputs.update(bkwd_block_inputs)
         bkwd_layer_kernels.update(bkwd_block_kernels)
         bkwd_layer_outputs.update(bkwd_block_outputs)

@@ -55,10 +55,14 @@ class RandomInjection:
         self.available_stages = ['fwrd_inject', 'bkwd_inject']
         self.available_fmodels = ['INPUT', 'INPUT_16', 'WT', 'WT_16', "RBFLIP", "RD", "RD_CORRECT", "ZERO", "N16_RD", "N16_RD_CORRECT", "RD_GLB", "RD_CORRECT_GLB", "N64_INPUT", "N64_WT", "N64_INPUT_16", "N64_WT_16", "N64_INPUT_GLB", "N64_WT_GLB"]
         self.learning_rate_range = [0.0001, 0.001, 0.01, 0.1]
+        self.min_val = None
+        self.max_val = None
         
     def get_random_injection_params(self, model=None, stage=None, fmodel=None, 
                                   target_layer=None, target_epoch=None, 
-                                  target_step=None, learning_rate=None):
+                                  target_step=None, learning_rate=None,
+                                  inj_pos=None, inj_values=None,
+                                  min_val=None, max_val=None):
         """
         Generate random injection parameters. If parameters are provided, use them;
         otherwise generate random ones.
@@ -74,11 +78,14 @@ class RandomInjection:
         self.learning_rate = learning_rate if learning_rate else random.choice(self.learning_rate_range)
         
         # Injection position will be randomly selected by get_inj_args
-        self.inj_pos = "random"
+        self.inj_pos = inj_pos if inj_pos is not None else "random"
         
         # Injection value will be randomly selected by get_inj_args
-        self.inj_values = "random"
+        self.inj_values = inj_values if inj_values is not None else "random"
             
+        self.min_val = min_val
+        self.max_val = max_val
+
         return {
             'model': self.model,
             'stage': self.stage,
@@ -90,7 +97,9 @@ class RandomInjection:
             'inj_pos': self.inj_pos,
             'inj_values': self.inj_values,
             'learning_rate': self.learning_rate,
-            'seed': self.seed
+            'seed': self.seed,
+            'min_val': self.min_val,
+            'max_val': self.max_val
         }
     
     def save_injection_config(self, filename='random_injection_config.csv'):
@@ -329,7 +338,24 @@ class RandomInjection:
                         l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
 
                     # Create injection args with random position selection
-                    inj_args, inj_flag = get_inj_args(InjType[self.fmodel], None, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder, self)
+                    if self.min_val is not None and self.max_val is not None:
+                        print("performing random injection with min/max range!")
+                        inj_args, inj_flag = get_inj_args_with_random_range(
+                            InjType[self.fmodel], None, inj_layer,
+                            l_inputs, l_kernels, l_outputs, train_recorder,
+                            self, self.min_val, self.max_val
+                        )
+                    elif self.inj_pos != "random" and self.inj_values != "random":
+                        print("performing specific injection!")
+                        inj_args, inj_flag = get_replay_args(
+                            InjType[self.fmodel], self, None, inj_layer,
+                            l_inputs, l_kernels, l_outputs, train_recorder,
+                            inj_pos=self.inj_pos, inj_values=self.inj_values
+                        )
+                    else:
+                        print("performing random injection!")
+                        inj_args, inj_flag = get_inj_args(InjType[self.fmodel], None, inj_layer, l_inputs, l_kernels, l_outputs, train_recorder, self)
+
 
                     if 'fwrd' in self.stage:
                         losses = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
@@ -338,9 +364,12 @@ class RandomInjection:
 
                 record(train_recorder, f"Epoch: {epoch}/{total_epochs}, step: {step}/{steps_per_epoch}, loss: {train_loss.result():.5f}, accuracy: {train_accuracy.result():.5f}\n")
 
+
                 if not np.isfinite(train_loss.result()):
                     record(train_recorder, "Encounter NaN! Terminate training!\n")
-                    early_terminate = True
+
+                    # don't early terminate for now
+                    # early_terminate = True
 
             if not early_terminate:
                 valid_iterator = iter(valid_dataset)
@@ -370,7 +399,9 @@ class RandomInjection:
 
 def random_fault_injection(model=None, stage=None, fmodel=None, 
                           target_layer=None, target_epoch=None, 
-                          target_step=None, learning_rate=None):
+                          target_step=None, learning_rate=None,
+                          inj_pos=None, inj_values=None,
+                          min_val=None, max_val=None):
     """
     Main function to run random fault injection.
     If parameters are not provided, they will be randomly selected.
@@ -379,7 +410,9 @@ def random_fault_injection(model=None, stage=None, fmodel=None,
     params = injector.get_random_injection_params(
         model=model, stage=stage, fmodel=fmodel,
         target_layer=target_layer, target_epoch=target_epoch,
-        target_step=target_step, learning_rate=learning_rate
+        target_step=target_step, learning_rate=learning_rate,
+        inj_pos=inj_pos, inj_values=inj_values,
+        min_val=min_val, max_val=max_val
     )
     
     print("Generated Random Injection Parameters:")
@@ -396,7 +429,8 @@ def random_fault_injection(model=None, stage=None, fmodel=None,
 if __name__ == "__main__":
     # Example usage - completely random parameters
     print("Running with completely random parameters...")
-    results = random_fault_injection(target_step=1,stage="fwrd_inject", target_layer='basicblock_4_basic_1_conv2', fmodel="INPUT", target_epoch=4, learning_rate=0.1)
+
+    results = random_fault_injection(model='resnet18', target_step=1, target_epoch=4, learning_rate=0.1, min_val=1e16, max_val=1e18)
     
     print("\n" + "="*50)
     print("SIMULATION COMPLETE")

@@ -192,6 +192,102 @@ def choose_inj_pos(target, inj_type, train_recorder, db_st):
     return mask, delta
 
 
+def get_inj_args_with_random_range(inj_type, strategy, inj_layer, inputs, kernels, outputs, train_recorder, db_st, min_val, max_val):
+    np.random.seed(None)
+    inj_replica = 0  # Single CPU execution
+    db_st.target_worker = inj_replica
+    record(train_recorder, "Inject worker: {}\n".format(inj_replica))
+    record(train_recorder, "Inject layer: {}\n".format(inj_layer))
+
+    if is_input_target(inj_type):
+        target = inputs.numpy()
+    elif is_weight_target(inj_type):
+        if type(kernels) == list:
+            target = kernels[0].numpy()
+        else:
+            target = kernels.numpy()
+    elif is_output_target(inj_type):
+        target = outputs.numpy()
+    else:
+        print("ERROR: Unsupported inject type!")
+        exit(2)
+
+    record(train_recorder, "Shape for target layer is {}\n".format(target.shape))
+
+    # This is a new function that will choose positions and generate values in a range.
+    mask, delta = choose_inj_pos_with_random_range(target, inj_type, train_recorder, db_st, min_val, max_val)
+
+    if type(kernels) == list:
+        golden_weights = []
+        for elem in kernels:
+            wt_em = elem.numpy()
+            golden_weights.append(wt_em)
+    else:
+        golden_weights = kernels.numpy()
+
+    inj_flag = True
+
+    return InjArgs(inj_replica, inj_layer, inj_type, golden_weights, outputs, mask, delta), inj_flag
+
+
+def choose_inj_pos_with_random_range(target, inj_type, train_recorder, db_st, min_val, max_val):
+    np.random.seed(None)
+    shape = target.shape
+
+    def random_positions(shape, train_recorder, n_inj, n_repeat):
+        positions = []
+        
+        total_elements = np.prod(shape)
+        if total_elements == 0:
+            return []
+
+        if n_inj > total_elements:
+            n_inj = total_elements
+
+        total_chunks = int(total_elements / n_inj)
+
+        start_chunk = np.random.randint(total_chunks)
+
+        if n_repeat != 1:
+            if start_chunk + 1 >= total_chunks:
+                end_chunk = total_chunks
+            else:
+                end_chunk = np.random.randint(start_chunk + 1, total_chunks)
+        else:
+            end_chunk = start_chunk + 1
+
+        start_flat = start_chunk * n_inj
+        end_flat = end_chunk * n_inj
+
+        start_pos = np.unravel_index(start_flat, shape)
+        end_pos = np.unravel_index(end_flat - 1, shape)
+        
+        record(train_recorder, "Start injection at position {}\n".format(start_pos))
+        record(train_recorder, "End injection at position {}\n".format(end_pos))
+
+        for flat in range(start_flat, end_flat):
+            positions.append(np.unravel_index(flat, shape))
+        return positions
+
+    n_inj, n_repeat = num_inj(inj_type)
+    positions = random_positions(shape, train_recorder, n_inj, n_repeat)
+
+    mask = np.ones(shape)
+    delta = np.zeros(shape)
+
+    db_st.inj_pos = positions
+    db_st.inj_values = []
+    for pos in positions:
+        ori_val = target[pos]
+        val_delta = np.random.uniform(low=min_val, high=max_val)
+        
+        mask[pos] = 0
+        delta[pos] = val_delta
+
+        record(train_recorder, "Position is {}, Golden data is {}, inject data is {}\n".format(pos, ori_val, val_delta))
+        db_st.inj_values.append(val_delta)
+
+    return mask, delta
 
 
 def choose_random_layer(model, phase):
@@ -1039,10 +1135,10 @@ def get_gpu_inj_args(inj_type, inj_layer, inputs, kernels, outputs, train_record
     return InjArgs(inj_replica, inj_layer, inj_type, golden_weights, outputs, mask, delta), inj_flag
 
 
-def set_replay_pos(target, rp, train_recorder):
+def set_replay_pos(target, inj_pos, inj_values, train_recorder):
     shape = target.shape
 
-    positions = [tuple(elem) for elem in rp.inj_pos]
+    positions = [tuple(elem) for elem in inj_pos]
 
     mask = np.ones(shape)
     delta = np.zeros(shape)
@@ -1050,7 +1146,7 @@ def set_replay_pos(target, rp, train_recorder):
     for i in range(len(positions)):
         pos = positions[i]
         ori_val = target[pos]
-        val_delta = rp.inj_values[i]
+        val_delta = inj_values[i]
 
         mask[pos] = 0
         delta[pos] = val_delta
@@ -1059,7 +1155,7 @@ def set_replay_pos(target, rp, train_recorder):
     return mask, delta
 
 
-def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs, train_recorder):
+def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs, train_recorder, inj_pos=None, inj_values=None):
     np.random.seed(None)
     #inj_replica = np.random.randint(strategy.num_replicas_in_sync)
     inj_replica = rp.target_worker
@@ -1083,7 +1179,9 @@ def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs,
 
         record(train_recorder, "Shape for target layer is {}\n".format(target.shape))
 
-        mask, delta = set_replay_pos(target, rp, train_recorder)
+        _inj_pos = inj_pos if inj_pos is not None else rp.inj_pos
+        _inj_values = inj_values if inj_values is not None else rp.inj_values
+        mask, delta = set_replay_pos(target, _inj_pos, _inj_values, train_recorder)
 
         if type(kernels) == list:
             golden_weights = []
@@ -1114,7 +1212,9 @@ def get_replay_args(inj_type, rp, strategy, inj_layer, inputs, kernels, outputs,
 
     record(train_recorder, "Shape for target layer is {}\n".format(target.shape))
 
-    mask, delta = set_replay_pos(target, rp, train_recorder)
+    _inj_pos = inj_pos if inj_pos is not None else rp.inj_pos
+    _inj_values = inj_values if inj_values is not None else rp.inj_values
+    mask, delta = set_replay_pos(target, _inj_pos, _inj_values, train_recorder)
 
     if type(kernels) == list:
         golden_weights = []
