@@ -22,7 +22,7 @@ from prepare_data import generate_datasets
 import math
 from models.inject_utils import *
 from injection import read_injection
-
+import sys
 
 tf.config.set_soft_device_placement(True)
 # Keep seed consistent for reproducibility
@@ -75,8 +75,8 @@ class RandomInjection:
         self.fmodel = fmodel if fmodel else random.choice(self.available_fmodels)
         self.target_worker = random.randint(1, 5)  # Based on CSV data
         self.target_layer = target_layer if target_layer else choose_random_layer(self.model, self.stage) 
-        self.target_epoch = target_epoch if target_epoch else random.randint(1, 30)
-        self.target_step = target_step if target_step else random.randint(1, 50)
+        self.target_epoch = target_epoch
+        self.target_step = target_step
         self.learning_rate = learning_rate if learning_rate else random.choice(self.learning_rate_range)
         
         # Injection position will be randomly selected by get_inj_args
@@ -303,8 +303,15 @@ class RandomInjection:
         ax.grid(True)
         plt.show()
 
-        # Create a timestamp and a temporary log file
+        # Create a timestamp and define file paths
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        
+        # Setup plot and log paths
+        plot_result_folder = "simulation_results/NaN"
+        os.makedirs(plot_result_folder, exist_ok=True)
+        plot_filename = f"{self.model}_{self.stage}_{self.fmodel}_{timestamp}_accuracy_plot.png"
+        plot_path = os.path.join(plot_result_folder, plot_filename)
+        
         temp_log_file = f"temp_log_{timestamp}.txt"
         train_recorder = open(temp_log_file, 'w')
         
@@ -333,8 +340,6 @@ class RandomInjection:
             train_iterator = iter(train_dataset)
             for step in range(steps_per_epoch):
                 print(f"epoch: {epoch}, step: {step}")
-                train_loss.reset_state()
-                train_accuracy.reset_state()
                 if early_terminate:
                     break
                     
@@ -392,6 +397,9 @@ class RandomInjection:
                 
                 fig.canvas.draw()
                 fig.canvas.flush_events()
+                
+                # Continuously save the plot
+                fig.savefig(plot_path)
 
                 if not np.isfinite(train_loss.result()):
                     record(train_recorder, "Encounter NaN! Terminate training!\n")
@@ -408,7 +416,11 @@ class RandomInjection:
 
         train_recorder.close()
         
-        result_folder = "simulation_results/NaN"
+        # Determine final log directory and filename
+        if early_terminate:
+            result_folder = "simulation_results/NaN"
+        else:
+            result_folder = "simulation_results/No_NaN"
             
         os.makedirs(result_folder, exist_ok=True)
         
@@ -418,10 +430,7 @@ class RandomInjection:
         # Move the log file
         os.rename(temp_log_file, final_log_path)
 
-        # Save the plot
-        plot_filename = f"{self.model}_{self.stage}_{self.fmodel}_{timestamp}_accuracy_plot.png"
-        plot_path = os.path.join(result_folder, plot_filename)
-        fig.savefig(plot_path)
+        # Plot is already saved, just announce and close
         print(f"Accuracy plot saved to {plot_path}")
         plt.close(fig)
 
@@ -468,7 +477,7 @@ if __name__ == "__main__":
     # Example usage - completely random parameters
     print("Running with completely random parameters...")
 
-    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=30, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.1, min_val=1e16, max_val=1e18)
+    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=15, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.001, min_val=sys.float_info.max, max_val=sys.float_info.max)
     
     print("\n" + "="*50)
     print("SIMULATION COMPLETE")
