@@ -403,7 +403,7 @@ class RandomInjection:
 
                 if not np.isfinite(train_loss.result()):
                     record(train_recorder, "Encounter NaN! Terminate training!\n")
-                    early_terminate = True
+                    # early_terminate = True
 
             if not early_terminate:
                 valid_iterator = iter(valid_dataset)
