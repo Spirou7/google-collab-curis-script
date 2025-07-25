@@ -7,6 +7,7 @@ import glob
 import datetime
 import matplotlib.pyplot as plt
 from models.inject_utils import choose_random_layer
+from models.weight_analyzer import analyze_weight_corruption, check_weights_for_corruption
 from models.resnet import resnet_18
 from models.backward_resnet import backward_resnet_18
 from models.resnet_nobn import resnet_18_nobn
@@ -382,8 +383,26 @@ class RandomInjection:
                     else:
                         losses = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
 
+                    # Immediate post-injection weight corruption analysis
+                    post_injection_stats = analyze_weight_corruption(model, include_layer_details=False)
+                    record(train_recorder, f"POST-INJECTION: Weight corruption immediately after injection: {post_injection_stats.corrupted_percentage:.4f}% ({post_injection_stats.nan_parameters} NaN, {post_injection_stats.inf_parameters} Inf)\n")
+                    print(f"🎯 POST-INJECTION: {post_injection_stats.nan_percentage:.4f}% NaN weights, {post_injection_stats.corrupted_percentage:.4f}% total corruption")
+
                 record(train_recorder, f"Epoch: {epoch}/{total_epochs}, step: {step}/{steps_per_epoch}, loss: {train_loss.result():.5f}, accuracy: {train_accuracy.result():.5f}\n")
 
+                # Analyze weight corruption and log alongside training metrics
+                weight_stats = analyze_weight_corruption(model, include_layer_details=False)
+                record(train_recorder, f"Weight corruption: {weight_stats.corrupted_percentage:.4f}% ({weight_stats.nan_parameters} NaN, {weight_stats.inf_parameters} Inf out of {weight_stats.total_parameters} total)\n")
+                
+                # Print weight corruption to screen for real-time monitoring
+                print(f"Weight NaN Analysis: {weight_stats.nan_percentage:.4f}% NaN weights, {weight_stats.corrupted_percentage:.4f}% total corruption")
+                
+                # Check for significant weight corruption
+                if weight_stats.corrupted_percentage > 0.1:  # Alert if corruption > 0.1%
+                    warning_msg = f"⚠️  WARNING: High weight corruption detected ({weight_stats.corrupted_percentage:.4f}%)!"
+                    record(train_recorder, warning_msg + "\n")
+                    print(warning_msg)
+                
                 # Update plot
                 global_step = epoch * steps_per_epoch + step
                 steps_history.append(global_step)
@@ -478,7 +497,7 @@ if __name__ == "__main__":
     # Example usage - completely random parameters
     print("Running with completely random parameters...")
 
-    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=15, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.001, min_val=sys.float_info.max, max_val=sys.float_info.max)
+    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=3, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.001, min_val=sys.float_info.max, max_val=sys.float_info.max)
     
     print("\n" + "="*50)
     print("SIMULATION COMPLETE")
