@@ -402,7 +402,8 @@ class RandomInjection:
                 fig.savefig(plot_path)
 
                 if not np.isfinite(train_loss.result()):
-                    record(train_recorder, "Encounter NaN! Terminate training!\n")
+                    record(train_recorder, "Encounter NaN! Continuing training...!\n")
+                    # DO NOT EARLY TERMINATE BECAUSE WE WANT TO SEE THE EFFECTS
                     # early_terminate = True
 
             if not early_terminate:
