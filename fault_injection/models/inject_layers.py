@@ -514,6 +514,24 @@ class InjectConv2D(tf.keras.layers.Conv2D):
             layer_out = self.bias_layer(conv_out)
         else:
             layer_out = conv_out
+        
+        # check for any nan or inf in the layer_out and sanitize using tf.cond for graph compatibility
+        def sanitize_nan_inf():
+            tf.print("Trying to sanitize the Inf and NaN's detected")
+            # remove the nan or inf from the layer_out
+            sanitized = tf.where(tf.math.is_nan(layer_out), tf.zeros_like(layer_out), layer_out)
+            sanitized = tf.where(tf.math.is_inf(layer_out), tf.zeros_like(sanitized), sanitized)
+            return sanitized
+
+        def no_sanitize():
+            return layer_out
+
+        has_nan_or_inf = tf.logical_or(
+            tf.reduce_any(tf.math.is_nan(layer_out)), 
+            tf.reduce_any(tf.math.is_inf(layer_out))
+        )
+        
+        # layer_out = tf.cond(has_nan_or_inf, sanitize_nan_inf, no_sanitize)
 
         return layer_out, conv_out
 

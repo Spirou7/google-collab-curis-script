@@ -2,9 +2,9 @@ model,resnet18
 stage,fwrd_inject
 fmodel,INPUT
 target_worker,2
-target_layer,basicblock_1_basic_1_conv1
+target_layer,basicblock_2_basic_0_conv1
 target_epoch,0
-target_step,3
+target_step,2
 inj_pos,random
 inj_values,random
 learning_rate,0.001

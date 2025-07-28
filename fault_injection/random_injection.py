@@ -8,6 +8,7 @@ import datetime
 import matplotlib.pyplot as plt
 from models.inject_utils import choose_random_layer
 from models.weight_analyzer import analyze_weight_corruption, check_weights_for_corruption
+from models.injection_visualizer import generate_injection_corruption_analysis
 from models.resnet import resnet_18
 from models.backward_resnet import backward_resnet_18
 from models.resnet_nobn import resnet_18_nobn
@@ -244,7 +245,7 @@ class RandomInjection:
 
             train_loss.update_state(avg_loss)
             train_accuracy.update_state(labels, predictions)
-            return avg_loss
+            return avg_loss, l_outputs
 
         def bkwd_inj_train_step1(iter_inputs, inj_layer):
             images, labels = iter_inputs
@@ -274,7 +275,7 @@ class RandomInjection:
 
             train_loss.update_state(avg_loss)
             train_accuracy.update_state(labels, predictions)
-            return avg_loss
+            return avg_loss, l_outputs
 
         @tf.function
         def valid_step(iterator):
@@ -379,14 +380,41 @@ class RandomInjection:
 
 
                     if 'fwrd' in self.stage:
-                        losses = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                        losses, injected_layer_outputs = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
                     else:
-                        losses = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                        losses, injected_layer_outputs = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
 
                     # Immediate post-injection weight corruption analysis
                     post_injection_stats = analyze_weight_corruption(model, include_layer_details=False)
                     record(train_recorder, f"POST-INJECTION: Weight corruption immediately after injection: {post_injection_stats.corrupted_percentage:.4f}% ({post_injection_stats.nan_parameters} NaN, {post_injection_stats.inf_parameters} Inf)\n")
                     print(f"🎯 POST-INJECTION: {post_injection_stats.nan_percentage:.4f}% NaN weights, {post_injection_stats.corrupted_percentage:.4f}% total corruption")
+
+                    # Generate layer-wise corruption visualization plots
+                    print(f"\n🎨 GENERATING INJECTION CORRUPTION VISUALIZATION...")
+                    injection_params = {
+                        'model': self.model,
+                        'stage': self.stage, 
+                        'fmodel': self.fmodel,
+                        'target_layer': self.target_layer,
+                        'target_epoch': self.target_epoch,
+                        'target_step': self.target_step
+                    }
+                    
+                    try:
+                        # Generate injection corruption plots in simulation_results/NaN/
+                        forward_plot, backward_plot = generate_injection_corruption_analysis(
+                            model=model,
+                            layer_outputs=injected_layer_outputs,
+                            injection_params=injection_params
+                        )
+                        
+                        record(train_recorder, f"INJECTION ANALYSIS: Forward corruption plot saved to {forward_plot}\n")
+                        record(train_recorder, f"INJECTION ANALYSIS: Backward corruption plot saved to {backward_plot}\n")
+                        
+                    except Exception as e:
+                        error_msg = f"⚠️ Error generating injection visualization: {str(e)}"
+                        print(error_msg)
+                        record(train_recorder, f"ERROR: {error_msg}\n")
 
                 record(train_recorder, f"Epoch: {epoch}/{total_epochs}, step: {step}/{steps_per_epoch}, loss: {train_loss.result():.5f}, accuracy: {train_accuracy.result():.5f}\n")
 
@@ -497,7 +525,7 @@ if __name__ == "__main__":
     # Example usage - completely random parameters
     print("Running with completely random parameters...")
 
-    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=3, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.001, min_val=sys.float_info.max, max_val=sys.float_info.max)
+    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=2, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.001, min_val=sys.float_info.max, max_val=sys.float_info.max)
     
     print("\n" + "="*50)
     print("SIMULATION COMPLETE")

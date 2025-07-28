@@ -1,0 +1,24 @@
+Inject to epoch: 0
+Inject to step: 2
+Epoch: 0/80, step: 0/49, loss: 2.87175, accuracy: 0.10352
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 1/49, loss: 3.90442, accuracy: 0.10107
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Inject worker: 0
+Inject layer: basicblock_3_basic_1_conv2
+Shape for target layer is (1024, 4, 4, 256)
+Start injection at position (np.int64(510), np.int64(0), np.int64(1), np.int64(20))
+End injection at position (np.int64(510), np.int64(0), np.int64(1), np.int64(20))
+Position is (np.int64(510), np.int64(0), np.int64(1), np.int64(20)), Golden data is 0.6083253026008606, inject data is 1.7976931348623157e+308
+POST-INJECTION: Weight corruption immediately after injection: 0.0000% (0 NaN, 0 Inf)
+ERROR: ⚠️ Error generating injection visualization: 'tensorflow.python.framework.ops.EagerTensor' object has no attribute 'items'
+Epoch: 0/80, step: 2/49, loss: 3.50925, accuracy: 0.10449
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 3/49, loss: 3.28885, accuracy: 0.10718
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 4/49, loss: 3.12200, accuracy: 0.11230
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 5/49, loss: 2.99761, accuracy: 0.12012
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 6/49, loss: 2.91294, accuracy: 0.12681
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
