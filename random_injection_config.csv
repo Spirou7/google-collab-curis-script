@@ -1,8 +1,8 @@
 model,resnet18
 stage,fwrd_inject
 fmodel,INPUT
-target_worker,5
-target_layer,basicblock_3_basic_0_conv1
+target_worker,4
+target_layer,basicblock_4_basic_1_conv2
 target_epoch,0
 target_step,2
 inj_pos,random

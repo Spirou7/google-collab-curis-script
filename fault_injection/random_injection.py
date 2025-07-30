@@ -699,12 +699,14 @@ if __name__ == "__main__":
     # Run fault injection across all ResNet18 layers
     print("Running ResNet18 layer sweep with fixed parameters...")
 
+    options = ["INPUT", "WT", "RD"]
+
     # Run the layer sweep with the same parameters as before
     all_results = run_resnet18_layer_sweep(
         target_epoch=0, 
         target_step=2, 
         stage='fwrd_inject', 
-        fmodel='INPUT', 
+        fmodel='WT', 
         learning_rate=0.001, 
         min_val=sys.float_info.max, 
         max_val=sys.float_info.max

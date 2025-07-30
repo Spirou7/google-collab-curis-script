@@ -1,0 +1,22 @@
+Inject to epoch: 0
+Inject to step: 2
+Epoch: 0/80, step: 0/49, loss: 2.87175, accuracy: 0.10352
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 1/49, loss: 3.90442, accuracy: 0.10107
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Inject worker: 0
+Inject layer: conv1
+Shape for target layer is (1024, 32, 32, 3)
+Start injection at position (np.int64(306), np.int64(17), np.int64(8), np.int64(1))
+End injection at position (np.int64(306), np.int64(17), np.int64(8), np.int64(1))
+Position is (np.int64(306), np.int64(17), np.int64(8), np.int64(1)), Golden data is 1.2204574346542358, inject data is 1.7976931348623157e+308
+POST-INJECTION: Weight corruption immediately after injection: 0.0000% (0 NaN, 0 Inf)
+INJECTION ANALYSIS: Forward corruption plot saved to simulation_results/NaN/fwrd_resnet18_fwrd_inject_INPUT_conv1_corruption_20250730-100718.png
+INJECTION ANALYSIS: Backward corruption plot saved to simulation_results/NaN/bkwd_resnet18_fwrd_inject_INPUT_conv1_corruption_20250730-100718.png
+Epoch: 0/80, step: 2/49, loss: 3.50929, accuracy: 0.10449
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 3/49, loss: 3.28721, accuracy: 0.10767
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Epoch: 0/80, step: 4/49, loss: 3.11983, accuracy: 0.11348
+Weight corruption: 0.0000% (0 NaN, 0 Inf out of 11196042 total)
+Early exit after 5 steps in first epoch for layer sweep
