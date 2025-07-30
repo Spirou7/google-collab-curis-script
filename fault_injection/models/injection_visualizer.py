@@ -274,13 +274,17 @@ def generate_injection_corruption_analysis(model: tf.keras.Model,
     print("="*60)
     backward_corruption = analyze_layer_weights_corruption(model)
     
-    # Generate plot filenames with fwrd/bkwd prefixes
+    # Generate plot filenames with fwrd/bkwd prefixes and layer name
     model_name = injection_params.get('model', 'unknown')
     stage = injection_params.get('stage', 'unknown')
     fmodel = injection_params.get('fmodel', 'unknown')
+    target_layer = injection_params.get('target_layer', 'unknown_layer')
     
-    forward_filename = f"fwrd_{model_name}_{stage}_{fmodel}_corruption_{timestamp}.png"
-    backward_filename = f"bkwd_{model_name}_{stage}_{fmodel}_corruption_{timestamp}.png"
+    # Clean layer name for filename (replace problematic characters)
+    clean_layer_name = target_layer.replace('/', '_').replace('\\', '_').replace(':', '_')
+    
+    forward_filename = f"fwrd_{model_name}_{stage}_{fmodel}_{clean_layer_name}_corruption_{timestamp}.png"
+    backward_filename = f"bkwd_{model_name}_{stage}_{fmodel}_{clean_layer_name}_corruption_{timestamp}.png"
     
     forward_path = os.path.join(output_dir, forward_filename)
     backward_path = os.path.join(output_dir, backward_filename)
@@ -357,7 +361,11 @@ def create_comparison_plots(pre_injection_forward: Dict[str, float],
         plt.grid(True, alpha=0.3, axis='y')
         plt.tight_layout()
         
-        forward_comparison_path = os.path.join(output_dir, f"fwrd_comparison_{timestamp}.png")
+        # Include layer name in comparison plot filename too
+        target_layer = injection_params.get('target_layer', 'unknown_layer')
+        clean_layer_name = target_layer.replace('/', '_').replace('\\', '_').replace(':', '_')
+        
+        forward_comparison_path = os.path.join(output_dir, f"fwrd_comparison_{clean_layer_name}_{timestamp}.png")
         plt.savefig(forward_comparison_path, dpi=300, bbox_inches='tight')
         plt.close()
     
@@ -386,7 +394,11 @@ def create_comparison_plots(pre_injection_forward: Dict[str, float],
         plt.grid(True, alpha=0.3, axis='y')
         plt.tight_layout()
         
-        backward_comparison_path = os.path.join(output_dir, f"bkwd_comparison_{timestamp}.png")
+        # Include layer name in comparison plot filename too
+        target_layer = injection_params.get('target_layer', 'unknown_layer')
+        clean_layer_name = target_layer.replace('/', '_').replace('\\', '_').replace(':', '_')
+        
+        backward_comparison_path = os.path.join(output_dir, f"bkwd_comparison_{clean_layer_name}_{timestamp}.png")
         plt.savefig(backward_comparison_path, dpi=300, bbox_inches='tight')
         plt.close()
         

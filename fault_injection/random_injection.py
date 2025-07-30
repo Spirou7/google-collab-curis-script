@@ -453,6 +453,12 @@ class RandomInjection:
                     # DO NOT EARLY TERMINATE BECAUSE WE WANT TO SEE THE EFFECTS
                     # early_terminate = True
 
+                # Exit after 5 steps in the first epoch for layer sweep efficiency
+                if epoch == 0 and step >= 4:  # step is 0-indexed, so step 4 = 5th step
+                    record(train_recorder, f"Early exit after {step + 1} steps in first epoch for layer sweep\n")
+                    print(f"🔄 Early exit after {step + 1} steps in first epoch - layer sweep mode")
+                    early_terminate = True
+
             if not early_terminate:
                 valid_iterator = iter(valid_dataset)
                 for _ in range(valid_steps_per_epoch):
@@ -521,12 +527,190 @@ def random_fault_injection(model=None, stage=None, fmodel=None,
     return results
 
 
-if __name__ == "__main__":
-    # Example usage - completely random parameters
-    print("Running with completely random parameters...")
+def run_resnet18_layer_sweep(target_epoch=0, target_step=2, stage='fwrd_inject', 
+                           fmodel='INPUT', learning_rate=0.001, 
+                           min_val=None, max_val=None):
+    """
+    Run fault injection across all ResNet18 layers with fixed parameters.
+    
+    This function iterates through all ResNet18 forward pass layers and runs
+    fault injection for each layer while keeping all other parameters constant.
+    
+    Args:
+        target_epoch: Epoch to inject fault (default: 0)
+        target_step: Step to inject fault (default: 2)
+        stage: Injection stage - 'fwrd_inject' or 'bkwd_inject' (default: 'fwrd_inject')
+        fmodel: Fault model type (default: 'INPUT')
+        learning_rate: Learning rate for training (default: 0.001)
+        min_val: Minimum injection value range (default: None for random)
+        max_val: Maximum injection value range (default: None for random)
+    
+    Returns:
+        List of results from each layer injection experiment
+    """
+    
+    # ResNet18 forward pass layers (from inject_utils.py)
+    resnet18_fwrd_layers = [
+        "conv1",
+        "basicblock_1_basic_0_conv1",
+        "basicblock_1_basic_0_conv2", 
+        "basicblock_1_basic_1_conv1",
+        "basicblock_1_basic_1_conv2",
+        "basicblock_2_basic_0_downsample",
+        "basicblock_2_basic_0_conv1",
+        "basicblock_2_basic_0_conv2",
+        "basicblock_2_basic_1_conv1", 
+        "basicblock_2_basic_1_conv2",
+        "basicblock_3_basic_0_downsample",
+        "basicblock_3_basic_0_conv1",
+        "basicblock_3_basic_0_conv2",
+        "basicblock_3_basic_1_conv1",
+        "basicblock_3_basic_1_conv2",
+        "basicblock_4_basic_0_downsample", 
+        "basicblock_4_basic_0_conv1",
+        "basicblock_4_basic_0_conv2",
+        "basicblock_4_basic_1_conv1",
+        "basicblock_4_basic_1_conv2"
+    ]
+    
+    # ResNet18 backward pass layers (from inject_utils.py)
+    resnet18_bkwd_layers = [
+        "basicblock_4_basic_1_conv2_grad_in",
+        "basicblock_4_basic_1_conv2_grad_wt",
+        "basicblock_4_basic_1_conv1_grad_in", 
+        "basicblock_4_basic_1_conv1_grad_wt",
+        "basicblock_4_basic_0_downsample_grad_in",
+        "basicblock_4_basic_0_downsample_grad_wt",
+        "basicblock_4_basic_0_conv2_grad_in",
+        "basicblock_4_basic_0_conv2_grad_wt",
+        "basicblock_4_basic_0_conv1_grad_in",
+        "basicblock_4_basic_0_conv1_grad_wt",
+        "basicblock_3_basic_1_conv2_grad_in",
+        "basicblock_3_basic_1_conv2_grad_wt",
+        "basicblock_3_basic_1_conv1_grad_in",
+        "basicblock_3_basic_1_conv1_grad_wt", 
+        "basicblock_3_basic_0_downsample_grad_in",
+        "basicblock_3_basic_0_downsample_grad_wt",
+        "basicblock_3_basic_0_conv2_grad_in",
+        "basicblock_3_basic_0_conv2_grad_wt",
+        "basicblock_3_basic_0_conv1_grad_in",
+        "basicblock_3_basic_0_conv1_grad_wt",
+        "basicblock_2_basic_1_conv2_grad_in",
+        "basicblock_2_basic_1_conv2_grad_wt",
+        "basicblock_2_basic_1_conv1_grad_in",
+        "basicblock_2_basic_1_conv1_grad_wt",
+        "basicblock_2_basic_0_downsample_grad_in",
+        "basicblock_2_basic_0_downsample_grad_wt",
+        "basicblock_2_basic_0_conv2_grad_in",
+        "basicblock_2_basic_0_conv2_grad_wt",
+        "basicblock_2_basic_0_conv1_grad_in",
+        "basicblock_2_basic_0_conv1_grad_wt",
+        "basicblock_1_basic_1_conv2_grad_in",
+        "basicblock_1_basic_1_conv2_grad_wt",
+        "basicblock_1_basic_1_conv1_grad_in",
+        "basicblock_1_basic_1_conv1_grad_wt",
+        "basicblock_1_basic_0_conv2_grad_in",
+        "basicblock_1_basic_0_conv2_grad_wt",
+        "basicblock_1_basic_0_conv1_grad_in",
+        "basicblock_1_basic_0_conv1_grad_wt",
+        "conv1_grad_in",
+        "conv1_grad_wt"
+    ]
+    
+    # Select appropriate layer list based on stage
+    if 'fwrd' in stage:
+        layer_list = resnet18_fwrd_layers
+        print(f"🚀 STARTING RESNET18 FORWARD PASS LAYER SWEEP")
+    else:
+        layer_list = resnet18_bkwd_layers  
+        print(f"🚀 STARTING RESNET18 BACKWARD PASS LAYER SWEEP")
+    
+    print(f"📊 Total layers to process: {len(layer_list)}")
+    print(f"⚙️  Fixed parameters:")
+    print(f"   - Model: resnet18")
+    print(f"   - Stage: {stage}")
+    print(f"   - Fault Model: {fmodel}")
+    print(f"   - Target Epoch: {target_epoch}")
+    print(f"   - Target Step: {target_step}")
+    print(f"   - Learning Rate: {learning_rate}")
+    print(f"   - Min Val: {min_val}")
+    print(f"   - Max Val: {max_val}")
+    print("="*70 + "\n")
+    
+    all_results = []
+    
+    for i, layer_name in enumerate(layer_list, 1):
+        print(f"\n{'='*70}")
+        print(f"🎯 LAYER {i}/{len(layer_list)}: {layer_name}")
+        print(f"{'='*70}")
+        
+        try:
+            # Run fault injection for this specific layer
+            results = random_fault_injection(
+                model='resnet18',
+                stage=stage,
+                fmodel=fmodel,
+                target_layer=layer_name,
+                target_epoch=target_epoch,
+                target_step=target_step,
+                learning_rate=learning_rate,
+                min_val=min_val,
+                max_val=max_val
+            )
+            
+            # Add layer information to results
+            results['target_layer'] = layer_name
+            results['layer_index'] = i
+            all_results.append(results)
+            
+            print(f"✅ Layer {layer_name} injection completed successfully!")
+            print(f"   - Final train accuracy: {results['final_train_accuracy']:.4f}")
+            print(f"   - Final train loss: {results['final_train_loss']:.4f}")
+            print(f"   - Early termination: {results['early_terminate']}")
+            
+        except Exception as e:
+            error_msg = f"❌ Error processing layer {layer_name}: {str(e)}"
+            print(error_msg)
+            
+            # Record error in results
+            error_result = {
+                'target_layer': layer_name,
+                'layer_index': i,
+                'error': str(e),
+                'final_train_accuracy': None,
+                'final_train_loss': None,
+                'early_terminate': True
+            }
+            all_results.append(error_result)
+            
+            # Continue with next layer instead of stopping
+            print(f"⏭️  Continuing with next layer...")
+    
+    print(f"\n{'='*70}")
+    print(f"🏁 RESNET18 LAYER SWEEP COMPLETE!")
+    print(f"📈 Successfully processed: {len([r for r in all_results if 'error' not in r])}/{len(layer_list)} layers")
+    print(f"❌ Failed layers: {len([r for r in all_results if 'error' in r])}")
+    print(f"{'='*70}")
+    
+    return all_results
 
-    results = random_fault_injection(model='resnet18', target_epoch=0, target_step=2, stage='fwrd_inject', fmodel='INPUT', learning_rate=0.001, min_val=sys.float_info.max, max_val=sys.float_info.max)
+
+if __name__ == "__main__":
+    # Run fault injection across all ResNet18 layers
+    print("Running ResNet18 layer sweep with fixed parameters...")
+
+    # Run the layer sweep with the same parameters as before
+    all_results = run_resnet18_layer_sweep(
+        target_epoch=0, 
+        target_step=2, 
+        stage='fwrd_inject', 
+        fmodel='INPUT', 
+        learning_rate=0.001, 
+        min_val=sys.float_info.max, 
+        max_val=sys.float_info.max
+    )
     
     print("\n" + "="*50)
-    print("SIMULATION COMPLETE")
+    print("RESNET18 LAYER SWEEP COMPLETE")
+    print(f"Total experiments run: {len(all_results)}")
     print("="*50)
