@@ -151,6 +151,46 @@ class RandomInjection:
 
         return model, back_model
 
+    def create_result_directory_structure(self, timestamp, result_type="NaN"):
+        """
+        Create organized directory structure for storing simulation results.
+        
+        Structure: simulation_results/{result_type}/{model}/{stage}/{layer}/{fmodel}/{timestamp}/
+        
+        Args:
+            timestamp: Timestamp string for unique identification
+            result_type: "NaN" or "No_NaN" based on simulation outcome
+            
+        Returns:
+            str: Full path to the timestamp directory where files should be stored
+        """
+        # Extract model name from complex model strings
+        model_name = self.model.replace('_sgd', '').replace('_nobn', '')
+        if model_name == 'effnet':
+            model_name = 'efficientnet'
+        elif model_name == 'nfnet':
+            model_name = 'nf_resnet'
+        
+        # Clean layer name for directory usage (replace problematic characters)
+        clean_layer = self.target_layer.replace('/', '_').replace('\\', '_')
+        
+        # Build nested directory path
+        result_dir = os.path.join(
+            "simulation_results",
+            result_type,
+            model_name,
+            self.stage,
+            clean_layer,
+            self.fmodel,
+            timestamp
+        )
+        
+        # Create the full directory structure
+        os.makedirs(result_dir, exist_ok=True)
+        
+        print(f"📁 Created result directory: {result_dir}")
+        return result_dir
+
     def run_training_simulation(self):
         """Run the training simulation with the current injection parameters"""
         print(f"Running training simulation with parameters:")
@@ -308,14 +348,17 @@ class RandomInjection:
         # Create a timestamp and define file paths
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         
-        # Setup plot and log paths
-        plot_result_folder = "simulation_results/NaN"
-        os.makedirs(plot_result_folder, exist_ok=True)
-        plot_filename = f"{self.model}_{self.stage}_{self.fmodel}_{timestamp}_accuracy_plot.png"
-        plot_path = os.path.join(plot_result_folder, plot_filename)
+        # Create organized directory structure
+        result_dir = self.create_result_directory_structure(timestamp, "NaN")
         
-        temp_log_file = f"temp_log_{timestamp}.txt"
-        train_recorder = open(temp_log_file, 'w')
+        # Define file paths within the organized directory
+        plot_filename = "accuracy_plot.png"
+        plot_path = os.path.join(result_dir, plot_filename)
+        
+        log_filename = "training_log.txt"
+        log_path = os.path.join(result_dir, log_filename)
+        
+        train_recorder = open(log_path, 'w')
         
         def record(recorder, text):
             recorder.write(text)
@@ -349,6 +392,12 @@ class RandomInjection:
                     losses = train_step(train_iterator)
                 else:
                     print("performing injection!")
+                    
+                    # Reset metrics immediately before injection to isolate its impact
+                    print("Resetting training metrics to observe immediate impact of injection.")
+                    train_loss.reset_state()
+                    train_accuracy.reset_state()
+
                     iter_inputs = next(train_iterator)
                     inj_layer = self.target_layer
 
@@ -401,11 +450,12 @@ class RandomInjection:
                     }
                     
                     try:
-                        # Generate injection corruption plots in simulation_results/NaN/
+                        # Generate injection corruption plots in organized directory
                         forward_plot, backward_plot = generate_injection_corruption_analysis(
                             model=model,
                             layer_outputs=injected_layer_outputs,
-                            injection_params=injection_params
+                            injection_params=injection_params,
+                            output_dir=result_dir
                         )
                         
                         record(train_recorder, f"INJECTION ANALYSIS: Forward corruption plot saved to {forward_plot}\n")
@@ -454,10 +504,12 @@ class RandomInjection:
                     # early_terminate = True
 
                 # Exit after 5 steps in the first epoch for layer sweep efficiency
+                """
                 if epoch == 0 and step >= 4:  # step is 0-indexed, so step 4 = 5th step
                     record(train_recorder, f"Early exit after {step + 1} steps in first epoch for layer sweep\n")
                     print(f"🔄 Early exit after {step + 1} steps in first epoch - layer sweep mode")
                     early_terminate = True
+                """
 
             if not early_terminate:
                 valid_iterator = iter(valid_dataset)
@@ -470,22 +522,28 @@ class RandomInjection:
 
         train_recorder.close()
         
-        # Determine final log directory and filename
-        if early_terminate:
-            result_folder = "simulation_results/NaN"
-        else:
-            result_folder = "simulation_results/No_NaN"
+        # If simulation terminated early due to NaN, files are already in NaN directory
+        # If not, we need to move them to No_NaN directory structure  
+        if not early_terminate:
+            # Create No_NaN directory structure and move files
+            no_nan_result_dir = self.create_result_directory_structure(timestamp, "No_NaN")
             
-        os.makedirs(result_folder, exist_ok=True)
-        
-        final_log_filename = f"{self.model}_{self.stage}_{self.fmodel}_{timestamp}.txt"
-        final_log_path = os.path.join(result_folder, final_log_filename)
-        
-        # Move the log file
-        os.rename(temp_log_file, final_log_path)
+            # Move accuracy plot
+            new_plot_path = os.path.join(no_nan_result_dir, plot_filename)
+            os.rename(plot_path, new_plot_path)
+            plot_path = new_plot_path
+            
+            # Move log file
+            new_log_path = os.path.join(no_nan_result_dir, log_filename)
+            os.rename(log_path, new_log_path)
+            
+            # Update result_dir for return info
+            result_dir = no_nan_result_dir
 
-        # Plot is already saved, just announce and close
-        print(f"Accuracy plot saved to {plot_path}")
+        # Plot and log files are now in their final organized locations
+        print(f"📁 Results saved to organized directory: {result_dir}")
+        print(f"📊 Accuracy plot: {plot_path}")
+        print(f"📝 Training log: {log_path if early_terminate else os.path.join(result_dir, log_filename)}")
         plt.close(fig)
 
         return {
@@ -701,16 +759,31 @@ if __name__ == "__main__":
 
     options = ["INPUT", "WT", "RD"]
 
+    # Run fault injection for this specific layer
+    results = random_fault_injection(
+        model='resnet18',
+        stage='fwrd_inject',
+        fmodel='RD',
+        target_layer='basicblock_1_basic_0_conv1',
+        target_epoch=0,
+        target_step=10,
+        learning_rate=0.001,
+        min_val=sys.float_info.max,
+        max_val=sys.float_info.max
+    )
+
+    """
     # Run the layer sweep with the same parameters as before
     all_results = run_resnet18_layer_sweep(
         target_epoch=0, 
         target_step=2, 
         stage='fwrd_inject', 
-        fmodel='WT', 
+        fmodel='RD', 
         learning_rate=0.001, 
         min_val=sys.float_info.max, 
         max_val=sys.float_info.max
     )
+    """
     
     print("\n" + "="*50)
     print("RESNET18 LAYER SWEEP COMPLETE")

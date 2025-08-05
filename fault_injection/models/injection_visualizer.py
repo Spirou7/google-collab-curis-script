@@ -274,17 +274,25 @@ def generate_injection_corruption_analysis(model: tf.keras.Model,
     print("="*60)
     backward_corruption = analyze_layer_weights_corruption(model)
     
-    # Generate plot filenames with fwrd/bkwd prefixes and layer name
-    model_name = injection_params.get('model', 'unknown')
-    stage = injection_params.get('stage', 'unknown')
-    fmodel = injection_params.get('fmodel', 'unknown')
-    target_layer = injection_params.get('target_layer', 'unknown_layer')
-    
-    # Clean layer name for filename (replace problematic characters)
-    clean_layer_name = target_layer.replace('/', '_').replace('\\', '_').replace(':', '_')
-    
-    forward_filename = f"fwrd_{model_name}_{stage}_{fmodel}_{clean_layer_name}_corruption_{timestamp}.png"
-    backward_filename = f"bkwd_{model_name}_{stage}_{fmodel}_{clean_layer_name}_corruption_{timestamp}.png"
+    # Generate plot filenames - use simple names if using organized directory structure
+    # Check if output_dir has organized structure (contains multiple path components)
+    path_components = output_dir.split(os.sep)
+    if len(path_components) > 3 and 'simulation_results' in path_components:
+        # Using organized directory structure - use simple filenames
+        forward_filename = "forward_corruption.png"
+        backward_filename = "backward_corruption.png"
+    else:
+        # Using legacy flat structure - use detailed filenames
+        model_name = injection_params.get('model', 'unknown')
+        stage = injection_params.get('stage', 'unknown')
+        fmodel = injection_params.get('fmodel', 'unknown')
+        target_layer = injection_params.get('target_layer', 'unknown_layer')
+        
+        # Clean layer name for filename (replace problematic characters)
+        clean_layer_name = target_layer.replace('/', '_').replace('\\', '_').replace(':', '_')
+        
+        forward_filename = f"fwrd_{model_name}_{stage}_{fmodel}_{clean_layer_name}_corruption_{timestamp}.png"
+        backward_filename = f"bkwd_{model_name}_{stage}_{fmodel}_{clean_layer_name}_corruption_{timestamp}.png"
     
     forward_path = os.path.join(output_dir, forward_filename)
     backward_path = os.path.join(output_dir, backward_filename)
