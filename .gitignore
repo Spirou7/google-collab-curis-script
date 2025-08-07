@@ -1,1 +1,9 @@
 tf_env/
+
+# Ignore all results but keep the README
+fault_injection/results/*
+!fault_injection/results/README.md
+
+# Also ignore simulation_results if any
+simulation_results/
+fault_injection/simulation_results/
