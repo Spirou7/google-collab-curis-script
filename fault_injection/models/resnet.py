@@ -1,8 +1,8 @@
 import tensorflow as tf
-from config import NUM_CLASSES
-from models.residual_block import BasicBlocks
-from models.inject_layers import *
-from models.random_layers import *
+from ..core.config import NUM_CLASSES
+from .residual_block import BasicBlocks
+from .inject_layers import *
+from .random_layers import *
 
 class ResNetTypeI(tf.keras.Model):
     def __init__(self, layer_params, seed, drop_out_rate):

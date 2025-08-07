@@ -6,24 +6,24 @@ import csv
 import glob
 import datetime
 import matplotlib.pyplot as plt
-from models.inject_utils import choose_random_layer
-from models.weight_analyzer import analyze_weight_corruption, check_weights_for_corruption
-from models.injection_visualizer import generate_injection_corruption_analysis
-from models.resnet import resnet_18
-from models.backward_resnet import backward_resnet_18
-from models.resnet_nobn import resnet_18_nobn
-from models.backward_resnet_nobn import backward_resnet_18_nobn
-from models import efficientnet
-from models import backward_efficientnet
-from models import densenet
-from models import backward_densenet
-from models import nf_resnet
-from models import backward_nf_resnet
-import config
-from prepare_data import generate_datasets
+from ..models.inject_utils import choose_random_layer
+from ..models.weight_analyzer import analyze_weight_corruption, check_weights_for_corruption
+from ..models.injection_visualizer import generate_injection_corruption_analysis
+from ..models.resnet import resnet_18
+from ..models.backward_resnet import backward_resnet_18
+from ..models.resnet_nobn import resnet_18_nobn
+from ..models.backward_resnet_nobn import backward_resnet_18_nobn
+from ..models import efficientnet
+from ..models import backward_efficientnet
+from ..models import densenet
+from ..models import backward_densenet
+from ..models import nf_resnet
+from ..models import backward_nf_resnet
+from ..core import config
+from ..data.prepare_data import generate_datasets
 import math
-from models.inject_utils import *
-from injection import read_injection
+from ..models.inject_utils import *
+from ..core.injection import read_injection
 import sys
 
 tf.config.set_soft_device_placement(True)
@@ -108,7 +108,12 @@ class RandomInjection:
     
     def save_injection_config(self, filename='random_injection_config.csv'):
         """Save the current injection configuration to a CSV file"""
-        with open(filename, 'w', newline='') as csvfile:
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "configs",
+            filename
+        )
+        with open(config_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(['model', self.model])
             writer.writerow(['stage', self.stage])
@@ -174,9 +179,10 @@ class RandomInjection:
         # Clean layer name for directory usage (replace problematic characters)
         clean_layer = self.target_layer.replace('/', '_').replace('\\', '_')
         
-        # Build nested directory path
+        # Build nested directory path - use new results folder
         result_dir = os.path.join(
-            "simulation_results",
+            os.path.dirname(os.path.dirname(__file__)),  # Go up to fault_injection/
+            "results",
             result_type,
             model_name,
             self.stage,

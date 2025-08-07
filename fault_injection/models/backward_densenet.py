@@ -1,8 +1,8 @@
 import tensorflow as tf
 import math
-import config
-from config import NUM_CLASSES
-from models.inject_layers import *
+from ..core import config
+from ..core.config import NUM_CLASSES
+from .inject_layers import *
 
 
 class BackwardBottleNeck(tf.keras.layers.Layer):

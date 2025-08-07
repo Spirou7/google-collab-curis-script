@@ -1,7 +1,7 @@
 import tensorflow as tf
-from config import NUM_CLASSES
-from models.backward_nobn_residual_block import BackwardBasicBlocks
-from models.inject_layers import *
+from ..core.config import NUM_CLASSES
+from .backward_nobn_residual_block import BackwardBasicBlocks
+from .inject_layers import *
 
 
 class BackwardResNetTypeI(tf.keras.Model):

@@ -1,24 +1,24 @@
 import tensorflow as tf
 
-from models.resnet import resnet_18
-from models.backward_resnet import backward_resnet_18
-from models.resnet_nobn import resnet_18_nobn
-from models.backward_resnet_nobn import backward_resnet_18_nobn
-from models import efficientnet
-from models import backward_efficientnet
-from models import densenet
-from models import backward_densenet
-from models import nf_resnet
-from models import backward_nf_resnet
+from ..models.resnet import resnet_18
+from ..models.backward_resnet import backward_resnet_18
+from ..models.resnet_nobn import resnet_18_nobn
+from ..models.backward_resnet_nobn import backward_resnet_18_nobn
+from ..models import efficientnet
+from ..models import backward_efficientnet
+from ..models import densenet
+from ..models import backward_densenet
+from ..models import nf_resnet
+from ..models import backward_nf_resnet
 
-import config
-from prepare_data import generate_datasets
+from ..core import config
+from ..data.prepare_data import generate_datasets
 import math
 import os
 import argparse
 import numpy as np
-from models.inject_utils import *
-from injection import read_injection
+from ..models.inject_utils import *
+from ..core.injection import read_injection
 
 
 tf.config.set_soft_device_placement(True)
@@ -224,7 +224,13 @@ def main():
     target_epoch = rp.target_epoch
     target_step = rp.target_step
 
-    train_recorder = open("replay_{}.txt".format(args.file[args.file.rfind('/')+1:args.file.rfind('.')]), 'w')
+    log_filename = "replay_{}.txt".format(args.file[args.file.rfind('/')+1:args.file.rfind('.')])
+    log_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "configs",
+        log_filename
+    )
+    train_recorder = open(log_path, 'w')
     record(train_recorder, "Inject to epoch: {}\n".format(target_epoch))
     record(train_recorder, "Inject to step: {}\n".format(target_step))
 

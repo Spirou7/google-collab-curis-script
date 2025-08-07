@@ -1,7 +1,7 @@
 import tensorflow as tf
-import config
+from ..core import config
 import pathlib
-from config import *
+from ..core.config import *
 from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.utils import to_categorical
 import numpy as np

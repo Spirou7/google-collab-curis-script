@@ -10,8 +10,8 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
 
-from weight_analyzer import analyze_weight_corruption, check_weights_for_corruption
-from models.inject_utils import record
+from ..models.weight_analyzer import analyze_weight_corruption, check_weights_for_corruption
+from ..models.inject_utils import record
 
 
 def enhanced_training_step_with_weight_monitoring(model, train_recorder, epoch, step):
@@ -198,7 +198,7 @@ def minimal_integration_example():
     print("Add to your existing training loop:")
     print("""
 # Add this import at the top
-from models.weight_analyzer import check_weights_for_corruption
+from ..models.weight_analyzer import check_weights_for_corruption
 
 # Add these 3 lines in your training loop:
 is_corrupted, stats = check_weights_for_corruption(model, threshold_percentage=0.1)

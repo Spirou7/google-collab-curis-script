@@ -1,7 +1,7 @@
 import tensorflow as tf
 import math
-from config import NUM_CLASSES
-from models.inject_layers import *
+from ..core.config import NUM_CLASSES
+from .inject_layers import *
 
 
 def round_filters(filters, multiplier):

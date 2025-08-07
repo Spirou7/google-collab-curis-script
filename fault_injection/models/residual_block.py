@@ -1,7 +1,7 @@
 import tensorflow as tf
-from models.inject_utils import *
-from models.inject_layers import *
-from models.random_layers import *
+from .inject_utils import *
+from .inject_layers import *
+from .random_layers import *
 
 class BasicBlock(tf.keras.layers.Layer):
 

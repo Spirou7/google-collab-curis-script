@@ -1,8 +1,8 @@
 import tensorflow as tf
 import math
-from config import NUM_CLASSES
-from models.inject_layers import *
-from models.random_layers import *
+from ..core.config import NUM_CLASSES
+from .inject_layers import *
+from .random_layers import *
 
 
 class BottleNeck(tf.keras.layers.Layer):

@@ -19,7 +19,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
 
 try:
-    from weight_analyzer import (
+    from ..models.weight_analyzer import (
         analyze_weight_corruption,
         check_weights_for_corruption,
         WeightCorruptionStats

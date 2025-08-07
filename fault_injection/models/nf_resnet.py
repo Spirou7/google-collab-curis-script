@@ -4,9 +4,9 @@
 
 import tensorflow as tf
 from keras import backend as K
-from models.nf_resblock import NFResBlock
-from models.nf_layers import InjectWSConv2D 
-from models.random_layers import *
+from .nf_resblock import NFResBlock
+from .nf_layers import InjectWSConv2D 
+from .random_layers import *
 
 
 nonlinearities = {

@@ -4,7 +4,7 @@
 
 import tensorflow as tf
 from keras import backend as K
-from models.backward_nf_layers import BackwardInjectWSConv2D, BackwardSqueezeExcite, BackwardStochasticDepth
+from .backward_nf_layers import BackwardInjectWSConv2D, BackwardSqueezeExcite, BackwardStochasticDepth
 
 
 class BackwardNFResBlock(tf.keras.Model):

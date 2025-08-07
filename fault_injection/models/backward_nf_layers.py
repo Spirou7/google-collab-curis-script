@@ -7,9 +7,9 @@ import math
 import sys
 
 from tensorflow import keras
-import config
-from models.inject_utils import is_input_target, is_weight_target, is_output_target
-from models.inject_layers import BackwardInjectDense
+from ..core import config
+from .inject_utils import is_input_target, is_weight_target, is_output_target
+from .inject_layers import BackwardInjectDense
 
 
 def inj_to_tensor(tensor, inj_args):

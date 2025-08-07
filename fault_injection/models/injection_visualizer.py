@@ -241,7 +241,7 @@ def create_backward_corruption_plot(corruption_data: Dict[str, float],
 def generate_injection_corruption_analysis(model: tf.keras.Model,
                                          layer_outputs: Dict[str, tf.Tensor],
                                          injection_params: Dict,
-                                         output_dir: str = "simulation_results/NaN") -> Tuple[str, str]:
+                                         output_dir: str = None) -> Tuple[str, str]:
     """
     Complete modular analysis workflow for injection corruption visualization.
     
@@ -256,6 +256,15 @@ def generate_injection_corruption_analysis(model: tf.keras.Model,
     Returns:
         Tuple of (forward_plot_path, backward_plot_path)
     """
+    # Use default output directory if not specified
+    if output_dir is None:
+        # Use the new results directory structure
+        output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "results",
+            "NaN"
+        )
+    
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
@@ -277,7 +286,7 @@ def generate_injection_corruption_analysis(model: tf.keras.Model,
     # Generate plot filenames - use simple names if using organized directory structure
     # Check if output_dir has organized structure (contains multiple path components)
     path_components = output_dir.split(os.sep)
-    if len(path_components) > 3 and 'simulation_results' in path_components:
+    if len(path_components) > 3 and ('simulation_results' in path_components or 'results' in path_components):
         # Using organized directory structure - use simple filenames
         forward_filename = "forward_corruption.png"
         backward_filename = "backward_corruption.png"
@@ -335,12 +344,20 @@ def create_comparison_plots(pre_injection_forward: Dict[str, float],
                            pre_injection_backward: Dict[str, float],
                            post_injection_backward: Dict[str, float],
                            injection_params: Dict,
-                           output_dir: str = "simulation_results/NaN") -> Tuple[str, str]:
+                           output_dir: str = None) -> Tuple[str, str]:
     """
     Create comparison plots showing before/after injection corruption.
     
     Modular comparison visualization for injection impact analysis.
     """
+    # Use default output directory if not specified
+    if output_dir is None:
+        output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "results",
+            "NaN"
+        )
+    
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     

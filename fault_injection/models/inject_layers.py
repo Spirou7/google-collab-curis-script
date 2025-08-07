@@ -1,9 +1,9 @@
 import tensorflow as tf
 import numpy as np
-from models.inject_utils import *
+from .inject_utils import *
 from tensorflow.keras.regularizers import l2
-import config
-from models.inject_utils import is_input_target, is_weight_target, is_output_target
+from ..core import config
+from .inject_utils import is_input_target, is_weight_target, is_output_target
 
 def inj_to_tensor(tensor, inj_args):
     if not is_weight_target(inj_args.inj_type):

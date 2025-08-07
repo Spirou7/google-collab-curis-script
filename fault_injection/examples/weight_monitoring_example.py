@@ -17,7 +17,7 @@ import sys
 # Add the models directory to the path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
 
-from weight_analyzer import (
+from ..models.weight_analyzer import (
     analyze_weight_corruption, 
     check_weights_for_corruption,
     log_weight_corruption_details,
