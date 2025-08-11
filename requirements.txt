@@ -1,3 +1,6 @@
-tensorflow
-matplotlib
-numpy 
+tensorflow==2.15.0
+matplotlib>=3.6.0
+numpy>=1.24.0
+pandas>=1.5.0
+scikit-learn>=1.2.0
+Pillow>=9.0.0

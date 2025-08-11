@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+tf_env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Results and outputs (will be mounted as volumes)
+fault_injection/results/*
+fault_injection/optimizer_comparison_results*
+fault_injection/simulation_results/*
+output/
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Model weights and checkpoints
+*.h5
+*.weights.h5
+*.ckpt
+checkpoints/
+*.pb
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+docker_run.sh
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+*.md
+docs/
+README.md
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
