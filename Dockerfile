@@ -40,12 +40,11 @@ ENV PYTHONPATH=/app:$PYTHONPATH
 ENV TF_CPP_MIN_LOG_LEVEL=1
 ENV PYTHONUNBUFFERED=1
 
-# Create a non-root user for security (optional but recommended)
-RUN useradd -m -s /bin/bash researcher && \
-    chown -R researcher:researcher /app
+# Make the app directory writable by all users (for bind mount compatibility)
+RUN chmod -R 777 /app
 
-# Switch to non-root user
-USER researcher
+# Don't switch to a specific user - let docker run command handle it
+# This allows --user flag to work properly
 
 # Default command - shows help
 CMD ["python", "fault_injection/scripts/test_optimizer_mitigation_v3.py", "--help"]

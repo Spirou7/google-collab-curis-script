@@ -14,14 +14,37 @@ NC='\033[0m' # No Color
 # Configuration
 IMAGE_NAME="fault-injection-experiment:latest"
 CONTAINER_NAME="fault_injection_runner"
-RESULTS_DIR="./fault_injection/results"
-OPTIMIZER_RESULTS_DIR="./fault_injection/optimizer_comparison_results"
-OUTPUT_DIR="./output"
 
-# Create necessary directories
-mkdir -p "$RESULTS_DIR"
-mkdir -p "$OPTIMIZER_RESULTS_DIR"
-mkdir -p "$OUTPUT_DIR"
+# Use absolute paths to avoid permission issues
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+RESULTS_DIR="${SCRIPT_DIR}/fault_injection/results"
+OPTIMIZER_RESULTS_DIR="${SCRIPT_DIR}/fault_injection/optimizer_comparison_results"
+OUTPUT_DIR="${SCRIPT_DIR}/output"
+
+# Create necessary directories with proper permissions
+print_message "Creating directories..."
+mkdir -p "$RESULTS_DIR" 2>/dev/null || {
+    print_warning "Could not create $RESULTS_DIR - it may already exist or you may need to create it manually"
+}
+mkdir -p "$OPTIMIZER_RESULTS_DIR" 2>/dev/null || {
+    print_warning "Could not create $OPTIMIZER_RESULTS_DIR - it may already exist or you may need to create it manually"
+}
+mkdir -p "$OUTPUT_DIR" 2>/dev/null || {
+    print_warning "Could not create $OUTPUT_DIR - it may already exist or you may need to create it manually"
+}
+
+# Check if directories exist and are writable
+if [ ! -d "$RESULTS_DIR" ]; then
+    print_error "Results directory does not exist: $RESULTS_DIR"
+    print_message "Please create it manually: mkdir -p $RESULTS_DIR"
+    exit 1
+fi
+
+if [ ! -w "$RESULTS_DIR" ]; then
+    print_error "Results directory is not writable: $RESULTS_DIR"
+    print_message "Please fix permissions: chmod 755 $RESULTS_DIR"
+    exit 1
+fi
 
 # Function to print colored messages
 print_message() {
@@ -49,11 +72,19 @@ build_image() {
 # Function to run interactive shell
 run_interactive() {
     print_message "Starting interactive container..."
+    print_message "Mounting directories:"
+    print_message "  - Results: $RESULTS_DIR"
+    print_message "  - Optimizer Results: $OPTIMIZER_RESULTS_DIR"
+    print_message "  - Output: $OUTPUT_DIR"
+    
     docker run -it --rm \
         --name $CONTAINER_NAME \
-        -v "$(pwd)/$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$(pwd)/$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$(pwd)/$OUTPUT_DIR:/app/output" \
+        --user $(id -u):$(id -g) \
+        -v "$RESULTS_DIR:/app/fault_injection/results" \
+        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
+        -v "$OUTPUT_DIR:/app/output" \
+        -e HOME=/app \
+        -w /app \
         $IMAGE_NAME \
         /bin/bash
 }
@@ -69,9 +100,12 @@ run_experiment() {
     
     docker run -it --rm \
         --name $CONTAINER_NAME \
-        -v "$(pwd)/$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$(pwd)/$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$(pwd)/$OUTPUT_DIR:/app/output" \
+        --user $(id -u):$(id -g) \
+        -v "$RESULTS_DIR:/app/fault_injection/results" \
+        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
+        -v "$OUTPUT_DIR:/app/output" \
+        -e HOME=/app \
+        -w /app \
         $IMAGE_NAME \
         python $script_path $args
 }
@@ -87,9 +121,12 @@ run_with_gpu() {
     docker run -it --rm \
         --gpus all \
         --name $CONTAINER_NAME \
-        -v "$(pwd)/$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$(pwd)/$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$(pwd)/$OUTPUT_DIR:/app/output" \
+        --user $(id -u):$(id -g) \
+        -v "$RESULTS_DIR:/app/fault_injection/results" \
+        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
+        -v "$OUTPUT_DIR:/app/output" \
+        -e HOME=/app \
+        -w /app \
         $IMAGE_NAME \
         python $script_path $args
 }
@@ -104,9 +141,12 @@ run_background() {
     
     container_id=$(docker run -d \
         --name $CONTAINER_NAME \
-        -v "$(pwd)/$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$(pwd)/$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$(pwd)/$OUTPUT_DIR:/app/output" \
+        --user $(id -u):$(id -g) \
+        -v "$RESULTS_DIR:/app/fault_injection/results" \
+        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
+        -v "$OUTPUT_DIR:/app/output" \
+        -e HOME=/app \
+        -w /app \
         $IMAGE_NAME \
         python $script_path $args)
     
