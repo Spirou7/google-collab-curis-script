@@ -1,5 +1,6 @@
-# Use TensorFlow base image with GPU support (change to tensorflow:2.15.0 for CPU-only)
-FROM tensorflow/tensorflow:2.15.0-gpu
+# Use Python 3.12 base image (matching your environment)
+# TensorFlow 2.19.0 will be installed via requirements.txt
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -8,9 +9,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-tk \
+    python3-dev \
+    gcc \
+    g++ \
     git \
     wget \
     vim \
+    libhdf5-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file first (for better Docker layer caching)
