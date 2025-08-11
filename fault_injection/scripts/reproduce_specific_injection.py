@@ -15,7 +15,7 @@ def run_specific_injection():
     
     # Parameters derived from the user's request
     target_epoch = 0
-    target_step = 2
+    target_step = 15
     target_layer = "basicblock_2_basic_0_downsample"
     
     # Injection position and value from the user's log
@@ -90,16 +90,20 @@ def run_conv1_max_value_injection():
     print("="*70)
 
 # this was able to INCREASE the accuracy slightly as it was training, which was one of the outcomes !
-def run_random_layer_n64_glb_injection():
+def run_random_layer_n64_glb_injection(seed=None, max_global_steps=8):
     """
     Injects into a random layer of ResNet18 using the N64_INPUT_GLB fault model
     with hardcoded min/max values.
+
+    Args:
+        seed: Optional random seed to control stochasticity for this run
+        max_global_steps: Hard limit on total training steps before early stop
     """
-    target_epoch = 0
-    target_step = 15
-    fmodel = 'N64_INPUT_GLB'
-    min_val = 3.6E+9
-    max_val = 1.2E+19
+    target_epoch = 2
+    target_step = 30
+    fmodel = 'N16_RD'
+    min_val = 3.6E+2
+    max_val = 1.2E+8
 
     print("="*70)
     print("🚀 STARTING RANDOM LAYER N64_INPUT_GLB INJECTION SIMULATION")
@@ -108,18 +112,22 @@ def run_random_layer_n64_glb_injection():
     print(f"   - Target Epoch: {target_epoch}")
     print(f"   - Target Step: {target_step}")
     print(f"   - Min/Max Value: {min_val}/{max_val}")
+    print(f"   - Seed: {seed}")
+    print(f"   - Max Global Steps: {max_global_steps}")
     print("="*70)
 
     results = random_fault_injection(
         model='resnet18',
         stage='bkwd_inject',
         fmodel=fmodel,
-        target_layer=None,  # Omit to select a random layer
+        target_layer="basicblock_4_basic_0_downsample_grad_in",  # Omit to select a random layer
         target_epoch=target_epoch,
         target_step=target_step,
         learning_rate=0.001,
         min_val=min_val,
-        max_val=max_val
+        max_val=max_val,
+        seed=seed,
+        max_global_steps=max_global_steps
     )
 
     print("\n" + "="*70)
@@ -136,8 +144,13 @@ def run_random_layer_n64_glb_injection():
 
 
 if __name__ == "__main__":
-    # To run a different simulation, comment out the line below
-    # and uncomment the desired function call.
-    run_random_layer_n64_glb_injection()
-    # run_conv1_max_value_injection()
-    # run_specific_injection()
+    # Run the random-layer experiment 20 times with different seeds
+    base_seed = 12345
+    num_runs = 20
+    for i in range(num_runs):
+        run_id = i + 1
+        seed = base_seed + i
+        print("\n" + "#"*80)
+        print(f"RUN {run_id}/{num_runs} - seed={seed}")
+        print("#"*80 + "\n")
+        run_random_layer_n64_glb_injection(seed=seed, max_global_steps=500)

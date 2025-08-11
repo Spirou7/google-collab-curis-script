@@ -61,16 +61,24 @@ class RandomInjection:
         self.learning_rate_range = [0.0001, 0.001, 0.01, 0.1]
         self.min_val = None
         self.max_val = None
+        # New: allow early stop by global steps
+        self.max_global_steps = None
         
     def get_random_injection_params(self, model=None, stage=None, fmodel=None, 
                                   target_layer=None, target_epoch=None, 
                                   target_step=None, learning_rate=None,
                                   inj_pos=None, inj_values=None,
-                                  min_val=None, max_val=None):
+                                  min_val=None, max_val=None,
+                                  seed=None, max_global_steps=None):
         """
         Generate random injection parameters. If parameters are provided, use them;
         otherwise generate random ones.
         """
+        # Apply provided seed and max step controls
+        if seed is not None:
+            self.seed = seed
+        self.max_global_steps = max_global_steps
+
         # Set parameters or generate random ones
         self.model = model if model else random.choice(self.available_models)
         self.stage = stage if stage else random.choice(self.available_stages)
@@ -103,7 +111,8 @@ class RandomInjection:
             'learning_rate': self.learning_rate,
             'seed': self.seed,
             'min_val': self.min_val,
-            'max_val': self.max_val
+            'max_val': self.max_val,
+            'max_global_steps': self.max_global_steps
         }
     
     def save_injection_config(self, filename='random_injection_config.csv'):
@@ -210,12 +219,18 @@ class RandomInjection:
         print(f"Injection Value: {self.inj_values}")
         print(f"Learning Rate: {self.learning_rate}")
         print(f"Seed: {self.seed}")
+        print(f"Max Global Steps: {self.max_global_steps}")
         
         # Save config for reference
         self.save_injection_config()
         
         # Configure TensorFlow for CPU on MacOS
         tf.config.set_visible_devices([], 'GPU')  # Disable GPU
+        
+        # Apply seeds for this run
+        tf.random.set_seed(self.seed)
+        random.seed(self.seed)
+        np.random.seed(self.seed)
         
         # Get datasets
         train_dataset, valid_dataset, train_count, valid_count = generate_datasets(self.seed)
@@ -304,7 +319,7 @@ class RandomInjection:
             man_grad_start = tape.gradient(avg_loss, grad_start)
             _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model.call(man_grad_start, l_inputs, l_kernels, inject=False, inj_args=None)
             return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
-
+            # densenet_dense_block_1_bottleneck_5_conv2_grad_in
         def bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag):
             images, labels = iter_inputs
             with tf.GradientTape() as tape:
@@ -509,13 +524,12 @@ class RandomInjection:
                     # DO NOT EARLY TERMINATE BECAUSE WE WANT TO SEE THE EFFECTS
                     # early_terminate = True
 
-                # Exit after 5 steps in the first epoch for layer sweep efficiency
-                """
-                if epoch == 0 and step >= 4:  # step is 0-indexed, so step 4 = 5th step
-                    record(train_recorder, f"Early exit after {step + 1} steps in first epoch for layer sweep\n")
-                    print(f"🔄 Early exit after {step + 1} steps in first epoch - layer sweep mode")
+                # New: Early exit after a configured number of global steps
+                if self.max_global_steps is not None and (global_step + 1) >= self.max_global_steps:
+                    record(train_recorder, f"Early exit after {global_step + 1} global steps per configuration\n")
+                    print(f"🔄 Early exit after {global_step + 1} global steps")
                     early_terminate = True
-                """
+                    break
 
             if not early_terminate:
                 valid_iterator = iter(valid_dataset)
@@ -566,18 +580,28 @@ def random_fault_injection(model=None, stage=None, fmodel=None,
                           target_layer=None, target_epoch=None, 
                           target_step=None, learning_rate=None,
                           inj_pos=None, inj_values=None,
-                          min_val=None, max_val=None):
+                          min_val=None, max_val=None,
+                          seed=None, max_global_steps=None):
     """
     Main function to run random fault injection.
     If parameters are not provided, they will be randomly selected.
     """
     injector = RandomInjection()
+
+    # Apply seed early so that any random choices inside param selection are deterministic
+    if seed is not None:
+        injector.seed = seed
+        random.seed(seed)
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
+
     params = injector.get_random_injection_params(
         model=model, stage=stage, fmodel=fmodel,
         target_layer=target_layer, target_epoch=target_epoch,
         target_step=target_step, learning_rate=learning_rate,
         inj_pos=inj_pos, inj_values=inj_values,
-        min_val=min_val, max_val=max_val
+        min_val=min_val, max_val=max_val,
+        seed=seed, max_global_steps=max_global_steps
     )
     
     print("Generated Random Injection Parameters:")

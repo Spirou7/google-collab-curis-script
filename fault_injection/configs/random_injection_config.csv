@@ -1,11 +1,11 @@
 model,resnet18
 stage,bkwd_inject
-fmodel,N64_INPUT_GLB
-target_worker,5
-target_layer,basicblock_1_basic_0_conv2_grad_in
-target_epoch,0
-target_step,15
+fmodel,N16_RD
+target_worker,4
+target_layer,basicblock_4_basic_0_downsample_grad_in
+target_epoch,2
+target_step,30
 inj_pos,random
 inj_values,random
 learning_rate,0.001
-seed,123
+seed,12345

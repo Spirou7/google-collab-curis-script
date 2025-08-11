@@ -7,3 +7,7 @@ fault_injection/results/*
 # Also ignore simulation_results if any
 simulation_results/
 fault_injection/simulation_results/
+
+# Optimizer comparison results
+fault_injection/optimizer_comparison_results*/
+optimizer_comparison_results*/
