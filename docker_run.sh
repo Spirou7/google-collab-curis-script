@@ -173,25 +173,39 @@ copy_results() {
     mkdir -p ./extracted_results/output
     mkdir -p ./extracted_results/checkpoints
     
-    # Use Alpine Linux to copy files from volumes
-    print_info "Extracting results..."
+    print_info "Extracting results using tar stream (no mounting required)..."
+    
+    # Create a tar archive from volumes and extract locally
     docker run --rm \
         -v $VOLUME_RESULTS:/source/results:ro \
         -v $VOLUME_OPTIMIZER:/source/optimizer:ro \
         -v $VOLUME_OUTPUT:/source/output:ro \
         -v $VOLUME_CHECKPOINTS:/source/checkpoints:ro \
-        -v "$(pwd)/extracted_results":/dest \
-        alpine sh -c "
-            cp -r /source/results/* /dest/fault_injection/results/ 2>/dev/null || true
-            cp -r /source/optimizer/* /dest/fault_injection/optimizer_comparison_results/ 2>/dev/null || true
-            cp -r /source/output/* /dest/output/ 2>/dev/null || true
-            cp -r /source/checkpoints/* /dest/checkpoints/ 2>/dev/null || true
-            echo 'Files copied successfully'
-        "
+        alpine tar czf - -C /source . 2>/dev/null | tar xzf - -C ./extracted_results/ 2>/dev/null || {
+            print_warning "Standard extraction failed, trying alternative method..."
+            
+            # Alternative: Create container, copy files, then extract
+            print_info "Creating temporary container for extraction..."
+            docker run -d --name temp_extractor \
+                -v $VOLUME_RESULTS:/app/fault_injection/results:ro \
+                -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results:ro \
+                -v $VOLUME_OUTPUT:/app/output:ro \
+                -v $VOLUME_CHECKPOINTS:/app/checkpoints:ro \
+                alpine sleep 300
+            
+            # Copy from container to local
+            docker cp temp_extractor:/app/fault_injection/results/. ./extracted_results/fault_injection/results/ 2>/dev/null || true
+            docker cp temp_extractor:/app/fault_injection/optimizer_comparison_results/. ./extracted_results/fault_injection/optimizer_comparison_results/ 2>/dev/null || true
+            docker cp temp_extractor:/app/output/. ./extracted_results/output/ 2>/dev/null || true
+            docker cp temp_extractor:/app/checkpoints/. ./extracted_results/checkpoints/ 2>/dev/null || true
+            
+            # Cleanup
+            docker rm -f temp_extractor >/dev/null 2>&1
+    }
     
     print_message "Results extracted to ./extracted_results/"
     print_info "Listing extracted files:"
-    find ./extracted_results -type f -name "*.json" -o -name "*.csv" -o -name "*.pkl" | head -20
+    find ./extracted_results -type f -name "*.json" -o -name "*.csv" -o -name "*.pkl" 2>/dev/null | head -20 || echo "No files found yet"
 }
 
 # Function to copy a specific file from container
@@ -264,20 +278,53 @@ clean_volumes() {
     fi
 }
 
-# Function to backup all volumes to a tar archive
+# Function to backup all volumes to a tar archive (no mounting)
 backup_volumes() {
     local backup_name="fault_injection_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
     print_message "Creating backup: $backup_name"
     
+    # Stream tar directly to local file without mounting
     docker run --rm \
         -v $VOLUME_RESULTS:/backup/results:ro \
         -v $VOLUME_OPTIMIZER:/backup/optimizer:ro \
         -v $VOLUME_OUTPUT:/backup/output:ro \
         -v $VOLUME_CHECKPOINTS:/backup/checkpoints:ro \
-        -v "$(pwd)":/dest \
-        alpine tar czf /dest/$backup_name -C /backup . && \
+        alpine tar czf - -C /backup . > $backup_name && \
         print_message "Backup created: ./$backup_name" || \
         print_error "Backup failed"
+}
+
+# Function to extract results without ANY mounting (safest method)
+extract_safe() {
+    print_message "Extracting results (completely mount-free method)..."
+    
+    # Create directories
+    mkdir -p ./extracted_results
+    
+    # Create temporary container with volumes attached
+    print_info "Creating temporary extraction container..."
+    docker create --name temp_extract \
+        -v $VOLUME_RESULTS:/data/results:ro \
+        -v $VOLUME_OPTIMIZER:/data/optimizer:ro \
+        -v $VOLUME_OUTPUT:/data/output:ro \
+        -v $VOLUME_CHECKPOINTS:/data/checkpoints:ro \
+        alpine sh >/dev/null 2>&1
+    
+    # Stream tar archive from container to local file
+    print_info "Streaming data from Docker volumes..."
+    docker run --rm \
+        -v $VOLUME_RESULTS:/data/results:ro \
+        -v $VOLUME_OPTIMIZER:/data/optimizer:ro \
+        -v $VOLUME_OUTPUT:/data/output:ro \
+        -v $VOLUME_CHECKPOINTS:/data/checkpoints:ro \
+        alpine tar czf - -C /data . | tar xzf - -C ./extracted_results/
+    
+    # Cleanup
+    docker rm -f temp_extract >/dev/null 2>&1 || true
+    
+    print_message "Results extracted to ./extracted_results/"
+    print_info "Contents:"
+    ls -la ./extracted_results/ 2>/dev/null || echo "Check ./extracted_results/ directory"
 }
 
 # Function to show volume info
@@ -306,6 +353,7 @@ Commands:
     
     === File Management (NEW) ===
     copy-results            Copy ALL results from volumes to ./extracted_results/
+    extract-safe            Extract results (safest, no mount method)
     copy-single FILE        Copy specific file from container/volume
     list-results            List files in Docker volumes
     backup                  Create tar.gz backup of all volumes
@@ -378,6 +426,9 @@ case "$1" in
         ;;
     copy-results)
         copy_results
+        ;;
+    extract-safe)
+        extract_safe
         ;;
     copy-single)
         shift
