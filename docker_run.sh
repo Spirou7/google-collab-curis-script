@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Docker run script for fault injection experiments
-# This script provides different modes for running the experiments
+# This script uses Docker named volumes to avoid host permission issues
 
 set -e
 
@@ -9,42 +9,8 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
-# Configuration
-IMAGE_NAME="fault-injection-experiment:latest"
-CONTAINER_NAME="fault_injection_runner"
-
-# Use absolute paths to avoid permission issues
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-RESULTS_DIR="${SCRIPT_DIR}/fault_injection/results"
-OPTIMIZER_RESULTS_DIR="${SCRIPT_DIR}/fault_injection/optimizer_comparison_results"
-OUTPUT_DIR="${SCRIPT_DIR}/output"
-
-# Create necessary directories with proper permissions
-print_message "Creating directories..."
-mkdir -p "$RESULTS_DIR" 2>/dev/null || {
-    print_warning "Could not create $RESULTS_DIR - it may already exist or you may need to create it manually"
-}
-mkdir -p "$OPTIMIZER_RESULTS_DIR" 2>/dev/null || {
-    print_warning "Could not create $OPTIMIZER_RESULTS_DIR - it may already exist or you may need to create it manually"
-}
-mkdir -p "$OUTPUT_DIR" 2>/dev/null || {
-    print_warning "Could not create $OUTPUT_DIR - it may already exist or you may need to create it manually"
-}
-
-# Check if directories exist and are writable
-if [ ! -d "$RESULTS_DIR" ]; then
-    print_error "Results directory does not exist: $RESULTS_DIR"
-    print_message "Please create it manually: mkdir -p $RESULTS_DIR"
-    exit 1
-fi
-
-if [ ! -w "$RESULTS_DIR" ]; then
-    print_error "Results directory is not writable: $RESULTS_DIR"
-    print_message "Please fix permissions: chmod 755 $RESULTS_DIR"
-    exit 1
-fi
 
 # Function to print colored messages
 print_message() {
@@ -59,6 +25,38 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+# Configuration
+IMAGE_NAME="fault-injection-experiment:latest"
+CONTAINER_NAME="fault_injection_runner"
+
+# Named volumes (Docker-managed, no host permissions needed)
+VOLUME_RESULTS="fault_injection_results"
+VOLUME_OPTIMIZER="fault_injection_optimizer"
+VOLUME_OUTPUT="fault_injection_output"
+VOLUME_CHECKPOINTS="fault_injection_checkpoints"
+
+# Function to check if Docker is running
+check_docker() {
+    if ! docker info >/dev/null 2>&1; then
+        print_error "Docker is not running or not installed"
+        exit 1
+    fi
+}
+
+# Function to create volumes if they don't exist
+create_volumes() {
+    print_message "Ensuring Docker volumes exist..."
+    docker volume create $VOLUME_RESULTS >/dev/null 2>&1 || true
+    docker volume create $VOLUME_OPTIMIZER >/dev/null 2>&1 || true
+    docker volume create $VOLUME_OUTPUT >/dev/null 2>&1 || true
+    docker volume create $VOLUME_CHECKPOINTS >/dev/null 2>&1 || true
+    print_message "Volumes ready: $VOLUME_RESULTS, $VOLUME_OPTIMIZER, $VOLUME_OUTPUT, $VOLUME_CHECKPOINTS"
+}
+
 # Function to build the Docker image
 build_image() {
     print_message "Building Docker image..."
@@ -71,18 +69,18 @@ build_image() {
 
 # Function to run interactive shell
 run_interactive() {
-    print_message "Starting interactive container..."
-    print_message "Mounting directories:"
-    print_message "  - Results: $RESULTS_DIR"
-    print_message "  - Optimizer Results: $OPTIMIZER_RESULTS_DIR"
-    print_message "  - Output: $OUTPUT_DIR"
+    create_volumes
+    print_message "Starting interactive container with named volumes..."
+    print_info "Files will be saved in Docker volumes (no host mounting)"
+    print_info "Use 'exit' to leave the container"
+    print_info "Use './docker_run.sh copy-results' to extract files after"
     
     docker run -it --rm \
         --name $CONTAINER_NAME \
-        --user $(id -u):$(id -g) \
-        -v "$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$OUTPUT_DIR:/app/output" \
+        -v $VOLUME_RESULTS:/app/fault_injection/results \
+        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+        -v $VOLUME_OUTPUT:/app/output \
+        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
         -e HOME=/app \
         -w /app \
         $IMAGE_NAME \
@@ -91,27 +89,33 @@ run_interactive() {
 
 # Function to run experiment
 run_experiment() {
+    create_volumes
     local script_path=$1
     shift
     local args=$@
     
     print_message "Running experiment: $script_path"
     print_message "Arguments: $args"
+    print_info "Results will be saved in Docker volumes"
     
     docker run -it --rm \
         --name $CONTAINER_NAME \
-        --user $(id -u):$(id -g) \
-        -v "$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$OUTPUT_DIR:/app/output" \
+        -v $VOLUME_RESULTS:/app/fault_injection/results \
+        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+        -v $VOLUME_OUTPUT:/app/output \
+        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
         -e HOME=/app \
         -w /app \
         $IMAGE_NAME \
         python $script_path $args
+    
+    print_message "Experiment completed!"
+    print_info "To extract results, run: ./docker_run.sh copy-results"
 }
 
 # Function to run with GPU support
 run_with_gpu() {
+    create_volumes
     local script_path=$1
     shift
     local args=$@
@@ -121,18 +125,21 @@ run_with_gpu() {
     docker run -it --rm \
         --gpus all \
         --name $CONTAINER_NAME \
-        --user $(id -u):$(id -g) \
-        -v "$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$OUTPUT_DIR:/app/output" \
+        -v $VOLUME_RESULTS:/app/fault_injection/results \
+        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+        -v $VOLUME_OUTPUT:/app/output \
+        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
         -e HOME=/app \
         -w /app \
         $IMAGE_NAME \
         python $script_path $args
+    
+    print_info "To extract results, run: ./docker_run.sh copy-results"
 }
 
 # Function to run in background (detached)
 run_background() {
+    create_volumes
     local script_path=$1
     shift
     local args=$@
@@ -141,10 +148,10 @@ run_background() {
     
     container_id=$(docker run -d \
         --name $CONTAINER_NAME \
-        --user $(id -u):$(id -g) \
-        -v "$RESULTS_DIR:/app/fault_injection/results" \
-        -v "$OPTIMIZER_RESULTS_DIR:/app/fault_injection/optimizer_comparison_results" \
-        -v "$OUTPUT_DIR:/app/output" \
+        -v $VOLUME_RESULTS:/app/fault_injection/results \
+        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+        -v $VOLUME_OUTPUT:/app/output \
+        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
         -e HOME=/app \
         -w /app \
         $IMAGE_NAME \
@@ -153,6 +160,135 @@ run_background() {
     print_message "Container started with ID: $container_id"
     print_message "Use 'docker logs -f $CONTAINER_NAME' to follow logs"
     print_message "Use 'docker stop $CONTAINER_NAME' to stop"
+    print_info "To extract results, run: ./docker_run.sh copy-results"
+}
+
+# Function to copy all results from volumes to current directory
+copy_results() {
+    print_message "Copying results from Docker volumes to current directory..."
+    
+    # Create local directories
+    mkdir -p ./extracted_results/fault_injection/results
+    mkdir -p ./extracted_results/fault_injection/optimizer_comparison_results
+    mkdir -p ./extracted_results/output
+    mkdir -p ./extracted_results/checkpoints
+    
+    # Use Alpine Linux to copy files from volumes
+    print_info "Extracting results..."
+    docker run --rm \
+        -v $VOLUME_RESULTS:/source/results:ro \
+        -v $VOLUME_OPTIMIZER:/source/optimizer:ro \
+        -v $VOLUME_OUTPUT:/source/output:ro \
+        -v $VOLUME_CHECKPOINTS:/source/checkpoints:ro \
+        -v "$(pwd)/extracted_results":/dest \
+        alpine sh -c "
+            cp -r /source/results/* /dest/fault_injection/results/ 2>/dev/null || true
+            cp -r /source/optimizer/* /dest/fault_injection/optimizer_comparison_results/ 2>/dev/null || true
+            cp -r /source/output/* /dest/output/ 2>/dev/null || true
+            cp -r /source/checkpoints/* /dest/checkpoints/ 2>/dev/null || true
+            echo 'Files copied successfully'
+        "
+    
+    print_message "Results extracted to ./extracted_results/"
+    print_info "Listing extracted files:"
+    find ./extracted_results -type f -name "*.json" -o -name "*.csv" -o -name "*.pkl" | head -20
+}
+
+# Function to copy a specific file from container
+copy_single() {
+    local file_path=$1
+    if [ -z "$file_path" ]; then
+        print_error "Please specify a file path to copy"
+        print_info "Example: ./docker_run.sh copy-single /app/fault_injection/results/experiment.json"
+        exit 1
+    fi
+    
+    # Try to copy from running container first
+    if docker ps -q -f name=$CONTAINER_NAME >/dev/null 2>&1; then
+        print_message "Copying $file_path from running container..."
+        docker cp $CONTAINER_NAME:$file_path ./$(basename $file_path) && \
+            print_message "File copied to ./$(basename $file_path)" || \
+            print_error "Failed to copy file"
+    else
+        print_warning "No running container found"
+        print_info "Starting temporary container to extract file..."
+        
+        # Extract from volume using temporary container
+        docker run --rm \
+            -v $VOLUME_RESULTS:/app/fault_injection/results:ro \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results:ro \
+            -v $VOLUME_OUTPUT:/app/output:ro \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints:ro \
+            -v "$(pwd)":/dest \
+            alpine cp $file_path /dest/$(basename $file_path) && \
+            print_message "File copied to ./$(basename $file_path)" || \
+            print_error "Failed to copy file"
+    fi
+}
+
+# Function to list files in volumes
+list_results() {
+    print_message "Listing files in Docker volumes..."
+    
+    docker run --rm \
+        -v $VOLUME_RESULTS:/results:ro \
+        -v $VOLUME_OPTIMIZER:/optimizer:ro \
+        -v $VOLUME_OUTPUT:/output:ro \
+        -v $VOLUME_CHECKPOINTS:/checkpoints:ro \
+        alpine sh -c "
+            echo '=== Results Volume ==='
+            find /results -type f 2>/dev/null | head -20 || echo 'No files found'
+            echo ''
+            echo '=== Optimizer Results Volume ==='
+            find /optimizer -type f 2>/dev/null | head -20 || echo 'No files found'
+            echo ''
+            echo '=== Output Volume ==='
+            find /output -type f 2>/dev/null | head -20 || echo 'No files found'
+            echo ''
+            echo '=== Checkpoints Volume ==='
+            find /checkpoints -type f 2>/dev/null | head -10 || echo 'No files found'
+        "
+}
+
+# Function to clean volumes (with confirmation)
+clean_volumes() {
+    print_warning "This will DELETE all data in Docker volumes!"
+    read -p "Are you sure? (yes/no): " confirm
+    
+    if [ "$confirm" = "yes" ]; then
+        print_message "Removing Docker volumes..."
+        docker volume rm $VOLUME_RESULTS $VOLUME_OPTIMIZER $VOLUME_OUTPUT $VOLUME_CHECKPOINTS 2>/dev/null || true
+        print_message "Volumes removed"
+    else
+        print_message "Cancelled"
+    fi
+}
+
+# Function to backup all volumes to a tar archive
+backup_volumes() {
+    local backup_name="fault_injection_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+    print_message "Creating backup: $backup_name"
+    
+    docker run --rm \
+        -v $VOLUME_RESULTS:/backup/results:ro \
+        -v $VOLUME_OPTIMIZER:/backup/optimizer:ro \
+        -v $VOLUME_OUTPUT:/backup/output:ro \
+        -v $VOLUME_CHECKPOINTS:/backup/checkpoints:ro \
+        -v "$(pwd)":/dest \
+        alpine tar czf /dest/$backup_name -C /backup . && \
+        print_message "Backup created: ./$backup_name" || \
+        print_error "Backup failed"
+}
+
+# Function to show volume info
+volume_info() {
+    print_message "Docker Volume Information:"
+    echo ""
+    for vol in $VOLUME_RESULTS $VOLUME_OPTIMIZER $VOLUME_OUTPUT $VOLUME_CHECKPOINTS; do
+        echo "Volume: $vol"
+        docker volume inspect $vol 2>/dev/null | grep -E '"CreatedAt"|"Mountpoint"' || echo "  Not created yet"
+        echo ""
+    done
 }
 
 # Function to show help
@@ -167,6 +303,17 @@ Commands:
     gpu SCRIPT [ARGS]       Run with GPU support
     background SCRIPT [ARGS] Run in background (detached)
     optimizer [ARGS]        Run optimizer mitigation experiment
+    
+    === File Management (NEW) ===
+    copy-results            Copy ALL results from volumes to ./extracted_results/
+    copy-single FILE        Copy specific file from container/volume
+    list-results            List files in Docker volumes
+    backup                  Create tar.gz backup of all volumes
+    
+    === Volume Management ===
+    volume-info             Show information about Docker volumes
+    clean-volumes           Delete all Docker volumes (WARNING: deletes data)
+    
     help                    Show this help message
 
 Examples:
@@ -179,16 +326,33 @@ Examples:
     # Run optimizer mitigation experiment
     $0 optimizer --baseline adam --test-optimizers sgd rmsprop --num-experiments 10
     
-    # Run with GPU
-    $0 gpu fault_injection/scripts/test_optimizer_mitigation_v3.py --num-experiments 100
+    # Extract all results after experiment
+    $0 copy-results
     
-    # Run in background
-    $0 background fault_injection/scripts/random_injection.py
+    # Copy specific file
+    $0 copy-single /app/fault_injection/results/experiment_001.json
+    
+    # List what's in the volumes
+    $0 list-results
+    
+    # Backup all data
+    $0 backup
+    
+    # Clean up volumes (careful!)
+    $0 clean-volumes
+
+Notes:
+    - Files are saved in Docker named volumes (no host mounting required)
+    - Volumes persist data between container runs
+    - Use 'copy-results' to extract files to your current directory
+    - No permission issues since Docker manages the volumes internally
 
 EOF
 }
 
 # Main script logic
+check_docker
+
 case "$1" in
     build)
         build_image
@@ -212,12 +376,35 @@ case "$1" in
         shift
         run_experiment "fault_injection/scripts/test_optimizer_mitigation_v3.py" $@
         ;;
+    copy-results)
+        copy_results
+        ;;
+    copy-single)
+        shift
+        copy_single $@
+        ;;
+    list-results)
+        list_results
+        ;;
+    clean-volumes)
+        clean_volumes
+        ;;
+    backup)
+        backup_volumes
+        ;;
+    volume-info)
+        volume_info
+        ;;
     help|--help|-h)
         show_help
         ;;
     *)
-        print_error "Unknown command: $1"
-        show_help
-        exit 1
+        if [ -z "$1" ]; then
+            show_help
+        else
+            print_error "Unknown command: $1"
+            show_help
+            exit 1
+        fi
         ;;
 esac

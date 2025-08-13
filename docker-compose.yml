@@ -2,53 +2,45 @@ version: '3.8'
 
 services:
   fault-injection:
-    build: .
     image: fault-injection-experiment:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: fault_injection_runner
-    
-    # Mount volumes for data persistence
-    volumes:
-      # Mount results directory - all experiment outputs go here
-      - ./fault_injection/results:/app/fault_injection/results
-      - ./fault_injection/optimizer_comparison_results:/app/fault_injection/optimizer_comparison_results
-      
-      # Mount data directory if you have external datasets
-      - ./data:/app/data
-      
-      # Mount a general output directory
-      - ./output:/app/output
-      
-      # Optional: Mount the scripts directory for live code updates
-      # - ./fault_injection/scripts:/app/fault_injection/scripts:ro
-    
-    # Environment variables
+    working_dir: /app
     environment:
+      - HOME=/app
+      - PYTHONPATH=/app:$PYTHONPATH
       - TF_CPP_MIN_LOG_LEVEL=1
       - PYTHONUNBUFFERED=1
-      # For GPU support (if available)
-      - NVIDIA_VISIBLE_DEVICES=all
-      
-    # For GPU support, uncomment the following:
-    # runtime: nvidia
-    # or for newer Docker versions:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    
-    # Keep container running for interactive work
+    volumes:
+      # Named volumes - Docker manages these internally
+      - fault_results:/app/fault_injection/results
+      - fault_optimizer:/app/fault_injection/optimizer_comparison_results
+      - fault_output:/app/output
+      - fault_checkpoints:/app/checkpoints
     stdin_open: true
     tty: true
-    
-    # Override default command - run bash for interactive mode
     command: /bin/bash
-    
-    # Resource limits (adjust as needed)
-    mem_limit: 16g
-    cpus: '8'
-    
-    # Network mode
-    network_mode: bridge
+
+  # Optional: GPU-enabled version
+  fault-injection-gpu:
+    extends: fault-injection
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+# Named volumes - Docker manages these, no host permissions needed
+volumes:
+  fault_results:
+    name: fault_injection_results
+  fault_optimizer:
+    name: fault_injection_optimizer
+  fault_output:
+    name: fault_injection_output
+  fault_checkpoints:
+    name: fault_injection_checkpoints
