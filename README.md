@@ -1,5 +1,55 @@
 # ISCA50_AE_Extend
 
+## Quick Start - Docker Workflow
+
+### Running Experiments and Extracting Results
+
+1. **Build the Docker image:**
+```bash
+./docker_run.sh build
+```
+
+2. **Run a quick test experiment (2-3 minutes):**
+```bash
+./docker_run.sh optimizer \
+    --baseline adam \
+    --test-optimizers sgd \
+    --num-experiments 1 \
+    --steps-after-injection 20
+```
+
+3. **Check what's in the volumes:**
+```bash
+./docker_run.sh list-results
+```
+
+4. **Extract results to your local machine:**
+```bash
+./docker_run.sh extract-safe
+# OR if that fails:
+./extract_volumes.sh auto
+```
+
+5. **Find your results:**
+```bash
+ls ./extracted_results/
+```
+
+Your experiment results will be in `./extracted_results/optimizer/` with JSON files, CSV files, and visualizations.
+
+### Full Experiment (longer run):
+```bash
+./docker_run.sh optimizer \
+    --baseline adam \
+    --test-optimizers sgd rmsprop adagrad \
+    --num-experiments 100 \
+    --steps-after-injection 200
+```
+
+---
+
+## Original Documentation
+
 We provide our fault injection framework for various workloads. The methodology to inject faults into the DNN training program is similar for all workloads. We will open-source the complete fault injection framework for all DNN workloads.
 
 In each fault injection experiment, we pick a random training epoch, a random training step, a random layer (selected from both layers in the forward pass and the backward pass), and a random software fault model, and continue training the workload to observe the outcome.
