@@ -1,15 +1,24 @@
-# ISCA50_AE_Extend
+# ISCA50_AE_Extend - Fault Injection Framework
 
-## Quick Start - Docker Workflow
+## 🚀 Complete Docker Workflow Guide
 
-### Running Experiments and Extracting Results
+This guide provides a complete workflow for running fault injection experiments using Docker with named volumes (no host mounting permissions required).
 
-1. **Build the Docker image:**
+### Prerequisites
+- Docker installed and running
+- Access to run Docker commands
+- ~2GB disk space for Docker images and results
+
+---
+
+## 📋 Quick Start (5 minutes)
+
+### 1. Build the Docker Image
 ```bash
 ./docker_run.sh build
 ```
 
-2. **Run a quick test experiment (2-3 minutes):**
+### 2. Run a Test Experiment (2-3 minutes)
 ```bash
 ./docker_run.sh optimizer \
     --baseline adam \
@@ -18,123 +27,309 @@
     --steps-after-injection 20
 ```
 
-3. **Check what's in the volumes:**
+### 3. Check Results in Docker Volumes
 ```bash
 ./docker_run.sh list-results
 ```
 
-4. **Extract results to your local machine:**
+### 4. Extract Results to Local Machine
 ```bash
 ./docker_run.sh extract-safe
-# OR if that fails:
-./extract_volumes.sh auto
 ```
 
-5. **Find your results:**
+### 5. View Your Results
 ```bash
-ls ./extracted_results/
+# Results are in ./extracted_results/ (NOT ./results/)
+ls ./extracted_results/optimizer/run_*/
+
+# View the report
+cat ./extracted_results/optimizer/run_*/final_report.md
+
+# Check visualizations (open in image viewer)
+ls ./extracted_results/optimizer/run_*/*.png
 ```
 
-Your experiment results will be in `./extracted_results/optimizer/` with JSON files, CSV files, and visualizations.
+### 6. View Results from Remote Server
+If you're on a remote SSH server, use one of these methods:
 
-### Full Experiment (longer run):
+**Option A: VS Code Remote SSH (Recommended)**
+- Install VS Code with Remote-SSH extension
+- **Important**: Increase timeout to 60 seconds:
+  - Open VS Code settings (Cmd/Ctrl + ,)
+  - Search for "remote.SSH.connectTimeout"
+  - Change from default (15) to 60 seconds
+- Connect to your server and browse images directly
+
+**Option B: Create HTML Report**
 ```bash
-./docker_run.sh optimizer \
-    --baseline adam \
-    --test-optimizers sgd rmsprop adagrad \
-    --num-experiments 100 \
-    --steps-after-injection 200
+python create_html_report.py ./extracted_results/optimizer
+# Download the report.html file and open locally
+```
+
+**Option C: Web Server**
+```bash
+cd extracted_results && python -m http.server 8888
+# Visit http://YOUR_SERVER_IP:8888 in browser
+```
+
+**Option D: Interactive Helper**
+```bash
+./view_results.sh  # Guides you through all viewing options
 ```
 
 ---
 
-## Original Documentation
+## 🔬 Full Experiment Workflow
 
-We provide our fault injection framework for various workloads. The methodology to inject faults into the DNN training program is similar for all workloads. We will open-source the complete fault injection framework for all DNN workloads.
-
-In each fault injection experiment, we pick a random training epoch, a random training step, a random layer (selected from both layers in the forward pass and the backward pass), and a random software fault model, and continue training the workload to observe the outcome.
-
-In order to inject faults to the backward pass and also correctly propagate the error effects, we manually implemented the backward pass for each workload, which can be found in the `fault_injection/models` folder.
-
-We have performed 2.9M fault injection experiments to obtain statistical results. In this artifact evaluation, we provide three reproducible examples of fault injections that correspond to three outcomes (Masked, Immediate INFs/NaNs, and SlowDegrade) reported in our paper. 
-
-We also provide instructions for running more fault injection experiments.
-
-## System Requirements
-### Hardware dependencies
-Our framework runs on Google Cloud TPU VMs.
-### Software dependencies
-Our framework requires the following tools:
-
+### Step 1: Build Docker Image
+```bash
+./docker_run.sh build
 ```
-Tensorflow 2.6.0
-Numpy 1.19.5
-Gdown 4.6.4
+This creates the `fault-injection-experiment:latest` image with all dependencies.
+
+### Step 2: Run Optimizer Comparison Experiment
+
+#### Quick Test (5 minutes, 3 experiments)
+```bash
+./docker_run.sh optimizer \
+    --baseline adam \
+    --test-optimizers sgd rmsprop \
+    --num-experiments 3 \
+    --steps-after-injection 50
 ```
 
-## Installation 
-
-### Step 1. create Google Cloud TPU VM
-
-```
-export PROJECT_ID=${PROJECT_ID}
-gcloud alpha compute tpus tpu-vm create ${TPU_NAME} --zone={TPU_LOCATION} --accelerator-type={TPU_TYPE} --version=v2-alpha
-```
-
-```
-PROJECT_ID: The Google cloud user ID.
-TPU_NAME: A user defined name.
-TPU_LOCATION: The cloud region, e.g., us-central1-a.
-TPU_TYPE: The type of the cloud TPU, e.g., v2-8.
+#### Standard Run (30-60 minutes, 10 experiments)
+```bash
+./docker_run.sh optimizer \
+    --baseline adam \
+    --test-optimizers sgd rmsprop adagrad \
+    --num-experiments 10 \
+    --steps-after-injection 200
 ```
 
-For more details on creating TPU VMs, please check [this page](https://cloud.google.com/tpu/docs/users-guide-tpu-vm).
-
-
-### Step 2. ssh to the TPU VM:
-
-```
-gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} --zone=${TPU_LOCATION} --project ${PROJECT_ID}
-```
-
-### Step 3. check numpy and tensorflow versions
-
-```
-import numpy
-numpy.__version__
-import tensorflow
-tensorflow.__version__
-```
-Make sure that the version of numpy is 1.19.5, and the version of tensorflow is 2.6.0. If the versions don't match, please install the correct versions.
-
-
-### Step 4. clone our github repo.
-```
-git clone git@github.com:YLab-UChicago/ISCA_AE_Extend.git
+#### Full Study (Several hours, 100 experiments)
+```bash
+./docker_run.sh optimizer \
+    --baseline adam \
+    --test-optimizers sgd rmsprop adagrad adamax nadam \
+    --num-experiments 100 \
+    --steps-after-injection 500
 ```
 
-### Step 5. Download checkpoints for various workloads from Google Drive.
+### Step 3: Monitor Progress
+```bash
+# Check if experiment is still running
+docker ps | grep fault_injection
 
-```
-pip install gdown 
-gdown --folder https://drive.google.com/drive/folders/1HVRFWY7NI5xr5qzR8yNeSKCRVnJNnqFf?usp=sharing
-```
-If gdown cannot be found, specify the full path where gdown is installed, mostly likely in `\~/.local/bin`.
+# View live logs
+docker logs -f fault_injection_runner
 
-
-## Experiment workflow
-
-The `reproduce_injections.py` file is the top-level program to perform the entire workflow of a fault injection experiment, which takes in one argument `--file`, which specifies the injection configs, e.g., the target training epoch, target training step, target layer, faulty values, etc. The configs of our three examples are provided in the `injections` folder.
-
-For each injection, the program generates an output file named `replay_inj_TARGET_INJECTION.txt` file under the `fault_injection` directory, which records the training loss, training accuracy for each training iteration, and test loss and test accuracy for each epoch. For examples that generate INFs/NaNs, the file will also record when INF/NaN values are observed.
-
-To execute each example, run:
-
-```
-cd fault_injection
-python3 reproduce_injections.py --file injections/WORKLOAD/inj_TARGET_INJECTION.csv
+# Check what's been saved so far
+./docker_run.sh list-results
 ```
 
-    
-## Experiment customization
-To run other examples, one can modify the `inj_TARGET_INJECTION.csv` files under the `injection` folder and specify different training epochs, training steps, target layers, and faulty values. The evaluation process is similar to the examples provided.
+### Step 4: Extract Results
+```bash
+# Primary extraction method
+./docker_run.sh extract-safe
+
+# Alternative if above fails
+./extract_volumes.sh auto
+
+# Results will be in ./extracted_results/optimizer/run_TIMESTAMP/
+ls -la ./extracted_results/optimizer/
+```
+
+### Step 5: Analyze Results
+
+Your results directory will contain:
+```
+./extracted_results/optimizer/run_20250814_XXXXXX/
+├── final_report.md                    # Human-readable summary
+├── summary_visualizations.png         # Overall comparison charts
+├── all_injection_configs.json        # Injection parameters used
+├── experiment_000/
+│   ├── results.json                  # Detailed metrics
+│   ├── recovery_comparison.png       # Recovery curves
+│   ├── degradation_rates.png        # Degradation analysis
+│   ├── recovery_adam.csv            # Adam optimizer data
+│   ├── recovery_sgd.csv             # SGD optimizer data
+│   └── injection_config.json        # Specific injection details
+├── experiment_001/
+│   └── ...
+└── experiment_002/
+    └── ...
+```
+
+---
+
+## 🛠️ Available Commands
+
+### Docker Run Script Commands
+```bash
+./docker_run.sh build              # Build Docker image
+./docker_run.sh interactive        # Start interactive shell
+./docker_run.sh optimizer [args]   # Run optimizer experiment
+./docker_run.sh list-results       # List files in volumes
+./docker_run.sh extract-safe       # Extract results (safest method)
+./docker_run.sh volume-info        # Show volume information
+./docker_run.sh clean-volumes      # Delete all volumes (WARNING!)
+./docker_run.sh backup            # Create backup of all volumes
+```
+
+### Experiment Parameters
+```bash
+--baseline OPTIMIZER           # Base optimizer (adam, sgd, rmsprop, etc.)
+--test-optimizers OPT1 OPT2   # Optimizers to compare
+--num-experiments N            # Number of experiments to run
+--steps-after-injection N      # Training steps after fault injection
+--learning-rate LR            # Learning rate (default: 0.001)
+--seed N                      # Random seed for reproducibility
+```
+
+---
+
+## 🔍 Troubleshooting
+
+### Issue: "Permission denied" when extracting
+```bash
+# Use the alternative extraction method
+./extract_volumes.sh auto
+
+# Or manually extract specific files
+docker run --rm -v fault_injection_optimizer:/data:ro alpine \
+    tar cf - -C /data . | tar xf - -C ./manual_extract/
+```
+
+### Issue: Can't find results after extraction
+Results are in `./extracted_results/` NOT `./results/`:
+```bash
+find ./extracted_results -name "*.json" -o -name "*.png"
+```
+
+### Issue: Experiment seems to hang
+```bash
+# Check container status
+docker ps | grep fault
+
+# View recent logs
+docker logs --tail 50 fault_injection_runner
+
+# Stop if needed
+docker stop fault_injection_runner
+```
+
+### Issue: Out of disk space
+```bash
+# Check Docker space usage
+docker system df
+
+# Clean up old containers and images
+docker system prune -a
+
+# Remove experiment volumes (WARNING: deletes data!)
+./docker_run.sh clean-volumes
+```
+
+---
+
+## 📊 Understanding Results
+
+### final_report.md
+Contains:
+- Summary statistics for each optimizer
+- Recovery success rates
+- Average performance metrics
+- Comparative analysis
+
+### summary_visualizations.png
+Shows:
+- Box plots comparing optimizer resilience
+- Recovery time distributions
+- Performance degradation patterns
+
+### Individual Experiment Files
+Each `experiment_XXX/` folder contains:
+- Detailed fault injection configuration
+- Step-by-step recovery data
+- Optimizer-specific CSV files with training metrics
+- Visualization plots
+
+---
+
+## 🧪 Testing the Setup
+
+Before running long experiments, verify your setup:
+
+```bash
+# 1. Run the volume test
+./test_volumes.sh
+
+# 2. Run a minimal experiment
+./docker_run.sh optimizer \
+    --baseline adam \
+    --test-optimizers sgd \
+    --num-experiments 1 \
+    --steps-after-injection 10
+
+# 3. Check and extract results
+./check_optimizer_results.sh
+./docker_run.sh extract-safe
+
+# 4. Verify files exist
+ls ./extracted_results/optimizer/run_*/
+```
+
+---
+
+## 🏗️ Architecture
+
+### Docker Volumes Used
+- `fault_injection_results` - General results
+- `fault_injection_optimizer` - Optimizer comparison results  
+- `fault_injection_output` - Output files
+- `fault_injection_checkpoints` - Model checkpoints
+
+### How It Works
+1. Docker containers run experiments
+2. Results save to Docker-managed named volumes
+3. Volumes persist after container stops
+4. Extraction copies from volumes to local filesystem
+5. No host mounting required - avoids permission issues
+
+---
+
+## 📚 Original Documentation
+
+### Fault Injection Methodology
+We provide our fault injection framework for various workloads. In each experiment, we:
+1. Pick a random training epoch
+2. Select a random training step
+3. Choose a random layer (forward or backward pass)
+4. Apply a random software fault model
+5. Continue training to observe outcomes
+
+### System Requirements (Original TPU Setup)
+- **Hardware**: Google Cloud TPU VMs
+- **Software**: TensorFlow 2.6.0, NumPy 1.19.5
+
+### Experiment Outcomes
+Three main outcomes observed:
+1. **Masked** - Fault has no significant impact
+2. **Immediate INFs/NaNs** - Catastrophic failure
+3. **SlowDegrade** - Gradual performance degradation
+
+For more details on the research methodology, see the original paper.
+
+---
+
+## 📧 Support
+
+For issues or questions:
+- Check the troubleshooting section above
+- Review `./docker_run.sh help` for command options
+- Examine logs with `docker logs fault_injection_runner`
+
+---
+
+*Last updated: August 2024*
