@@ -36,13 +36,17 @@ fi
 # Step 2: Run the test script in container
 print_info "Step 2: Running test script in container with volumes..."
 echo ""
+# Copy the test script into a temporary container and run it
 docker run --rm \
     -v fault_injection_results:/app/fault_injection/results \
     -v fault_injection_optimizer:/app/fault_injection/optimizer_comparison_results \
     -v fault_injection_output:/app/output \
     -v fault_injection_checkpoints:/app/checkpoints \
     fault-injection-experiment:latest \
-    python test_volume_save.py
+    sh -c "cat > /tmp/test_volume_save.py << 'EOF'
+$(cat test_volume_save.py)
+EOF
+python /tmp/test_volume_save.py"
 
 echo ""
 print_info "Step 3: Checking what's in the volumes..."
