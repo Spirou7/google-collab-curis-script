@@ -88,10 +88,20 @@ class OptimizerMitigationExperimentV3:
         
         # Results directory
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.results_base_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            f"optimizer_comparison_results_{timestamp}"
-        )
+        # Check if running in Docker with mounted volume
+        docker_volume_path = "/app/fault_injection/optimizer_comparison_results"
+        if os.path.exists(docker_volume_path):
+            # Save inside the Docker volume
+            self.results_base_dir = os.path.join(
+                docker_volume_path,
+                f"run_{timestamp}"
+            )
+        else:
+            # Fallback for non-Docker runs
+            self.results_base_dir = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                f"optimizer_comparison_results_{timestamp}"
+            )
         os.makedirs(self.results_base_dir, exist_ok=True)
         
         print(f"\n📁 RESULTS DIRECTORY:")
