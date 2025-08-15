@@ -14,10 +14,10 @@ This guide explains how to build and run the fault injection experiments in Dock
 
 ```bash
 # Make the run script executable
-chmod +x docker_run.sh
+chmod +x shell_scripts/docker_run.sh
 
 # Build the image
-./docker_run.sh build
+./shell_scripts/docker_run.sh build
 ```
 
 Or using Docker directly:
@@ -30,7 +30,7 @@ docker build -t fault-injection-experiment:latest .
 #### Interactive Mode (Recommended for Development)
 ```bash
 # Start an interactive shell in the container
-./docker_run.sh interactive
+./shell_scripts/docker_run.sh interactive
 
 # Once inside the container, run experiments:
 python fault_injection/scripts/test_optimizer_mitigation_v3.py \
@@ -43,7 +43,7 @@ python fault_injection/scripts/test_optimizer_mitigation_v3.py \
 #### Direct Execution
 ```bash
 # Run optimizer mitigation experiment directly
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd rmsprop nadam \
     --num-experiments 100 \
@@ -53,14 +53,14 @@ python fault_injection/scripts/test_optimizer_mitigation_v3.py \
 #### With GPU Support
 ```bash
 # Run with GPU acceleration (requires NVIDIA Docker)
-./docker_run.sh gpu fault_injection/scripts/test_optimizer_mitigation_v3.py \
+./shell_scripts/docker_run.sh gpu fault_injection/scripts/test_optimizer_mitigation_v3.py \
     --num-experiments 100
 ```
 
 #### Background Execution (for long-running experiments)
 ```bash
 # Run in background
-./docker_run.sh background fault_injection/scripts/test_optimizer_mitigation_v3.py \
+./shell_scripts/docker_run.sh background fault_injection/scripts/test_optimizer_mitigation_v3.py \
     --num-experiments 100
 
 # Check logs
@@ -116,7 +116,7 @@ scp fault_injection_project.tar.gz user@remote-machine:/path/to/destination
 
 # On target machine: Extract and build
 tar -xzf fault_injection_project.tar.gz
-./docker_run.sh build
+./shell_scripts/docker_run.sh build
 ```
 
 ### Method 2: Export Docker Image
@@ -155,7 +155,7 @@ The Dockerfile uses TensorFlow with GPU support by default. To use CPU-only:
 
 2. Rebuild the image:
    ```bash
-   ./docker_run.sh build
+   ./shell_scripts/docker_run.sh build
    ```
 
 ### Resource Limits
@@ -196,13 +196,13 @@ docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 ### Running Multiple Experiments with Different Optimizers
 ```bash
 # Test 1: Adam vs SGD
-./docker_run.sh optimizer --baseline adam --test-optimizers sgd --num-experiments 50
+./shell_scripts/docker_run.sh optimizer --baseline adam --test-optimizers sgd --num-experiments 50
 
 # Test 2: Adam vs RMSprop
-./docker_run.sh optimizer --baseline adam --test-optimizers rmsprop --num-experiments 50
+./shell_scripts/docker_run.sh optimizer --baseline adam --test-optimizers rmsprop --num-experiments 50
 
 # Test 3: All optimizers
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd rmsprop nadam adadelta \
     --num-experiments 100
@@ -214,7 +214,7 @@ Create a script `run_experiments.sh`:
 #!/bin/bash
 for optimizer in sgd rmsprop nadam; do
     echo "Testing $optimizer..."
-    ./docker_run.sh optimizer \
+    ./shell_scripts/docker_run.sh optimizer \
         --baseline adam \
         --test-optimizers $optimizer \
         --num-experiments 20 \

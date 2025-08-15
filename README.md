@@ -15,12 +15,12 @@ This guide provides a complete workflow for running fault injection experiments 
 
 ### 1. Build the Docker Image
 ```bash
-./docker_run.sh build
+./shell_scripts/docker_run.sh build
 ```
 
 ### 2. Run a Test Experiment (2-3 minutes)
 ```bash
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd \
     --num-experiments 1 \
@@ -29,12 +29,12 @@ This guide provides a complete workflow for running fault injection experiments 
 
 ### 3. Check Results in Docker Volumes
 ```bash
-./docker_run.sh list-results
+./shell_scripts/docker_run.sh list-results
 ```
 
 ### 4. Extract Results to Local Machine
 ```bash
-./docker_run.sh extract-safe
+./shell_scripts/docker_run.sh extract-safe
 ```
 
 ### 5. View Your Results
@@ -74,7 +74,7 @@ cd extracted_results && python -m http.server 8888
 
 **Option D: Interactive Helper**
 ```bash
-./view_results.sh  # Guides you through all viewing options
+./shell_scripts/view_results.sh  # Guides you through all viewing options
 ```
 
 ---
@@ -83,7 +83,7 @@ cd extracted_results && python -m http.server 8888
 
 ### Step 1: Build Docker Image
 ```bash
-./docker_run.sh build
+./shell_scripts/docker_run.sh build
 ```
 This creates the `fault-injection-experiment:latest` image with all dependencies.
 
@@ -91,7 +91,7 @@ This creates the `fault-injection-experiment:latest` image with all dependencies
 
 #### Quick Test (5 minutes, 3 experiments)
 ```bash
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd rmsprop \
     --num-experiments 3 \
@@ -100,7 +100,7 @@ This creates the `fault-injection-experiment:latest` image with all dependencies
 
 #### Standard Run (30-60 minutes, 10 experiments)
 ```bash
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd rmsprop adagrad \
     --num-experiments 10 \
@@ -109,7 +109,7 @@ This creates the `fault-injection-experiment:latest` image with all dependencies
 
 #### Full Study (Several hours, 100 experiments)
 ```bash
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd rmsprop adagrad adamax nadam \
     --num-experiments 100 \
@@ -125,16 +125,16 @@ docker ps | grep fault_injection
 docker logs -f fault_injection_runner
 
 # Check what's been saved so far
-./docker_run.sh list-results
+./shell_scripts/docker_run.sh list-results
 ```
 
 ### Step 4: Extract Results
 ```bash
 # Primary extraction method
-./docker_run.sh extract-safe
+./shell_scripts/docker_run.sh extract-safe
 
 # Alternative if above fails
-./extract_volumes.sh auto
+./shell_scripts/extract_volumes.sh auto
 
 # Results will be in ./extracted_results/optimizer/run_TIMESTAMP/
 ls -la ./extracted_results/optimizer/
@@ -167,14 +167,14 @@ Your results directory will contain:
 
 ### Docker Run Script Commands
 ```bash
-./docker_run.sh build              # Build Docker image
-./docker_run.sh interactive        # Start interactive shell
-./docker_run.sh optimizer [args]   # Run optimizer experiment
-./docker_run.sh list-results       # List files in volumes
-./docker_run.sh extract-safe       # Extract results (safest method)
-./docker_run.sh volume-info        # Show volume information
-./docker_run.sh clean-volumes      # Delete all volumes (WARNING!)
-./docker_run.sh backup            # Create backup of all volumes
+./shell_scripts/docker_run.sh build              # Build Docker image
+./shell_scripts/docker_run.sh interactive        # Start interactive shell
+./shell_scripts/docker_run.sh optimizer [args]   # Run optimizer experiment
+./shell_scripts/docker_run.sh list-results       # List files in volumes
+./shell_scripts/docker_run.sh extract-safe       # Extract results (safest method)
+./shell_scripts/docker_run.sh volume-info        # Show volume information
+./shell_scripts/docker_run.sh clean-volumes      # Delete all volumes (WARNING!)
+./shell_scripts/docker_run.sh backup            # Create backup of all volumes
 ```
 
 ### Experiment Parameters
@@ -194,7 +194,7 @@ Your results directory will contain:
 ### Issue: "Permission denied" when extracting
 ```bash
 # Use the alternative extraction method
-./extract_volumes.sh auto
+./shell_scripts/extract_volumes.sh auto
 
 # Or manually extract specific files
 docker run --rm -v fault_injection_optimizer:/data:ro alpine \
@@ -228,7 +228,7 @@ docker system df
 docker system prune -a
 
 # Remove experiment volumes (WARNING: deletes data!)
-./docker_run.sh clean-volumes
+./shell_scripts/docker_run.sh clean-volumes
 ```
 
 ---
@@ -263,18 +263,18 @@ Before running long experiments, verify your setup:
 
 ```bash
 # 1. Run the volume test
-./test_volumes.sh
+./shell_scripts/test_volumes.sh
 
 # 2. Run a minimal experiment
-./docker_run.sh optimizer \
+./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd \
     --num-experiments 1 \
     --steps-after-injection 10
 
 # 3. Check and extract results
-./check_optimizer_results.sh
-./docker_run.sh extract-safe
+./shell_scripts/check_optimizer_results.sh
+./shell_scripts/docker_run.sh extract-safe
 
 # 4. Verify files exist
 ls ./extracted_results/optimizer/run_*/
@@ -327,7 +327,7 @@ For more details on the research methodology, see the original paper.
 
 For issues or questions:
 - Check the troubleshooting section above
-- Review `./docker_run.sh help` for command options
+- Review `./shell_scripts/docker_run.sh help` for command options
 - Examine logs with `docker logs fault_injection_runner`
 
 ---

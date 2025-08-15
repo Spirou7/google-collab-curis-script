@@ -8,16 +8,16 @@ This setup uses Docker named volumes instead of bind mounts to completely avoid 
 ### Using docker_run.sh (Recommended)
 ```bash
 # Build the image
-./docker_run.sh build
+./shell_scripts/docker_run.sh build
 
 # Run an experiment
-./docker_run.sh optimizer --num-experiments 10
+./shell_scripts/docker_run.sh optimizer --num-experiments 10
 
 # Extract results to your current directory
-./docker_run.sh copy-results
+./shell_scripts/docker_run.sh copy-results
 
 # View files in volumes
-./docker_run.sh list-results
+./shell_scripts/docker_run.sh list-results
 ```
 
 ### Using docker-compose
@@ -45,29 +45,29 @@ docker-compose down
 ## Key Commands
 
 ### File Management
-- `./docker_run.sh copy-results` - Extract ALL results to `./extracted_results/`
-- `./docker_run.sh copy-single FILE` - Copy specific file
-- `./docker_run.sh list-results` - See what's in volumes
-- `./docker_run.sh backup` - Create tar.gz backup
+- `./shell_scripts/docker_run.sh copy-results` - Extract ALL results to `./extracted_results/`
+- `./shell_scripts/docker_run.sh copy-single FILE` - Copy specific file
+- `./shell_scripts/docker_run.sh list-results` - See what's in volumes
+- `./shell_scripts/docker_run.sh backup` - Create tar.gz backup
 
 ### Volume Management
-- `./docker_run.sh volume-info` - Show volume details
-- `./docker_run.sh clean-volumes` - Delete volumes (careful!)
+- `./shell_scripts/docker_run.sh volume-info` - Show volume details
+- `./shell_scripts/docker_run.sh clean-volumes` - Delete volumes (careful!)
 
 ## Workflow Example
 
 ```bash
 # 1. Build image
-./docker_run.sh build
+./shell_scripts/docker_run.sh build
 
 # 2. Run experiment
-./docker_run.sh optimizer --baseline adam --num-experiments 100
+./shell_scripts/docker_run.sh optimizer --baseline adam --num-experiments 100
 
 # 3. Check results
-./docker_run.sh list-results
+./shell_scripts/docker_run.sh list-results
 
 # 4. Extract to current directory
-./docker_run.sh copy-results
+./shell_scripts/docker_run.sh copy-results
 
 # 5. Files are now in ./extracted_results/
 ls ./extracted_results/
@@ -113,7 +113,7 @@ Try using sudo or ensure current directory is writable:
 ```bash
 mkdir extracted_results
 chmod 755 extracted_results
-./docker_run.sh copy-results
+./shell_scripts/docker_run.sh copy-results
 ```
 
 ### To inspect volumes directly

@@ -39,7 +39,7 @@ checkpoints/
 Dockerfile
 docker-compose.yml
 .dockerignore
-docker_run.sh
+shell_scripts/
 
 # IDE
 .vscode/

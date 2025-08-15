@@ -14,7 +14,7 @@ print_warning() { echo -e "${YELLOW}[CHECKPOINT]${NC} $1"; }
 
 # Start experiment in background
 print_message "Starting experiment in background..."
-./docker_run.sh background optimizer "$@"
+./shell_scripts/docker_run.sh background optimizer "$@"
 
 # Wait a bit for it to start
 sleep 5
@@ -27,14 +27,14 @@ while docker ps | grep -q fault_injection_runner; do
     sleep 300
     
     print_message "Auto-checkpoint: Checking saved files..."
-    ./docker_run.sh list-results | head -20
+    ./shell_scripts/docker_run.sh list-results | head -20
     
     # Optional: Auto-extract every 30 minutes
-    # ./docker_run.sh extract-safe
+    # ./shell_scripts/docker_run.sh extract-safe
 done
 
 print_message "Experiment completed or stopped!"
 print_message "Extracting final results..."
-./docker_run.sh extract-safe
+./shell_scripts/docker_run.sh extract-safe
 
 print_message "Results saved to ./extracted_results/"

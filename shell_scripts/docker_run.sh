@@ -73,7 +73,7 @@ run_interactive() {
     print_message "Starting interactive container with named volumes..."
     print_info "Files will be saved in Docker volumes (no host mounting)"
     print_info "Use 'exit' to leave the container"
-    print_info "Use './docker_run.sh copy-results' to extract files after"
+    print_info "Use './shell_scripts/docker_run.sh copy-results' to extract files after"
     
     docker run -it --rm \
         --name $CONTAINER_NAME \
@@ -110,7 +110,7 @@ run_experiment() {
         python $script_path $args
     
     print_message "Experiment completed!"
-    print_info "To extract results, run: ./docker_run.sh copy-results"
+    print_info "To extract results, run: ./shell_scripts/docker_run.sh copy-results"
 }
 
 # Function to run with GPU support
@@ -134,7 +134,7 @@ run_with_gpu() {
         $IMAGE_NAME \
         python $script_path $args
     
-    print_info "To extract results, run: ./docker_run.sh copy-results"
+    print_info "To extract results, run: ./shell_scripts/docker_run.sh copy-results"
 }
 
 # Function to run in background (detached)
@@ -160,7 +160,7 @@ run_background() {
     print_message "Container started with ID: $container_id"
     print_message "Use 'docker logs -f $CONTAINER_NAME' to follow logs"
     print_message "Use 'docker stop $CONTAINER_NAME' to stop"
-    print_info "To extract results, run: ./docker_run.sh copy-results"
+    print_info "To extract results, run: ./shell_scripts/docker_run.sh copy-results"
 }
 
 # Function to copy all results from volumes to current directory
@@ -213,7 +213,7 @@ copy_single() {
     local file_path=$1
     if [ -z "$file_path" ]; then
         print_error "Please specify a file path to copy"
-        print_info "Example: ./docker_run.sh copy-single /app/fault_injection/results/experiment.json"
+        print_info "Example: ./shell_scripts/docker_run.sh copy-single /app/fault_injection/results/experiment.json"
         exit 1
     fi
     

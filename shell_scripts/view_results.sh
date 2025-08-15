@@ -23,7 +23,7 @@ echo ""
 # Check if results exist
 if [ ! -d "./extracted_results" ]; then
     print_warning "No extracted_results directory found!"
-    print_message "Run './docker_run.sh extract-safe' first"
+    print_message "Run './shell_scripts/docker_run.sh extract-safe' first"
     exit 1
 fi
 

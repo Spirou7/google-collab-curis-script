@@ -313,7 +313,7 @@ def create_html_report(results_dir):
     print(f"\n✅ Created index: {index_path}")
     print("\nTo view these reports:")
     print("1. Download the HTML files to your local machine")
-    print("2. Or start a simple web server (see view_results.sh)")
+    print("2. Or start a simple web server (see shell_scripts/view_results.sh)")
 
 if __name__ == "__main__":
     import sys

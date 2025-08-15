@@ -30,7 +30,7 @@ if docker images | grep -q "fault-injection-experiment"; then
     print_success "Image exists"
 else
     print_warning "Image not found, building..."
-    ./docker_run.sh build
+    ./shell_scripts/docker_run.sh build
 fi
 
 # Step 2: Run the test script in container
@@ -50,7 +50,7 @@ python /tmp/test_volume_save.py"
 
 echo ""
 print_info "Step 3: Checking what's in the volumes..."
-./docker_run.sh list-results
+./shell_scripts/docker_run.sh list-results
 
 echo ""
 print_info "Step 4: Extracting files from volumes to local directory..."
@@ -58,7 +58,7 @@ echo ""
 
 # Try the safest extraction method
 print_message "Using extract-safe method..."
-./docker_run.sh extract-safe
+./shell_scripts/docker_run.sh extract-safe
 
 echo ""
 print_info "Step 5: Verifying extracted files..."
@@ -81,7 +81,7 @@ if [ -d "./extracted_results" ]; then
 else
     print_error "No extracted_results directory found!"
     print_info "Trying alternative extraction method..."
-    ./extract_volumes.sh auto
+    ./shell_scripts/extract_volumes.sh auto
 fi
 
 echo ""
@@ -91,5 +91,5 @@ echo "=========================================="
 echo ""
 print_success "If you see files above, the volume system is working!"
 print_info "Your 10-hour experiment can now be run with:"
-print_info "./docker_run.sh optimizer --your-parameters"
+print_info "./shell_scripts/docker_run.sh optimizer --your-parameters"
 echo ""

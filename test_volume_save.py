@@ -91,8 +91,8 @@ def create_test_files():
     
     print("-" * 60)
     print("TEST COMPLETE!")
-    print("Now run: ./docker_run.sh extract-safe")
-    print("Or: ./extract_volumes.sh")
+    print("Now run: ./shell_scripts/docker_run.sh extract-safe")
+    print("Or: ./shell_scripts/extract_volumes.sh")
     print("To extract these test files to your local machine.")
     print("=" * 60)
     

@@ -76,7 +76,7 @@ echo "To build the Docker image:"
 echo "  docker build -t fault-injection-experiment:latest ."
 echo ""
 echo "To run experiments:"
-echo "  ./docker_run.sh interactive"
+echo "  ./shell_scripts/docker_run.sh interactive"
 echo ""
 
 # Alternative: Singularity setup (common on HPC clusters)
