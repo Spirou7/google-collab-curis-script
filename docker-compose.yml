@@ -6,10 +6,11 @@ services:
     image: curis-optimizer:latest
     container_name: optimizer_experiment
     volumes:
-      # Mount results directory to host for easy access - matches v2 script path
-      - ./docker_results:/app/fault_injection/optimizer_comparison_results
-      # Mount the scripts directory for live code updates (optional)
-      - ./fault_injection/scripts:/app/fault_injection/scripts:ro
+      # Use named volumes to avoid permission issues
+      - fault_injection_optimizer:/app/fault_injection/optimizer_comparison_results
+      - fault_injection_results:/app/fault_injection/results
+      - fault_injection_output:/app/output
+      - fault_injection_checkpoints:/app/checkpoints
     environment:
       - PYTHONUNBUFFERED=1
       - TF_CPP_MIN_LOG_LEVEL=2  # Reduce TensorFlow verbosity
@@ -28,3 +29,10 @@ services:
       --optimizers adam sgd
     stdin_open: true
     tty: true
+
+# Define named volumes (Docker-managed, no permission issues)
+volumes:
+  fault_injection_optimizer:
+  fault_injection_results:
+  fault_injection_output:
+  fault_injection_checkpoints:

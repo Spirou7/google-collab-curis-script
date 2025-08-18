@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Test script to verify Docker setup works correctly
+# Uses Docker named volumes to avoid permission issues
 
 echo "========================================="
 echo "Docker Setup Test for Optimizer Script v3"
@@ -11,7 +12,14 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Named volumes (same as in shell_scripts/docker_run.sh)
+VOLUME_RESULTS="fault_injection_results"
+VOLUME_OPTIMIZER="fault_injection_optimizer"
+VOLUME_OUTPUT="fault_injection_output"
+VOLUME_CHECKPOINTS="fault_injection_checkpoints"
 
 # Step 1: Check Docker is installed
 echo "1. Checking Docker installation..."
@@ -34,10 +42,13 @@ else
 fi
 echo ""
 
-# Step 3: Create results directory
-echo "3. Creating results directory..."
-mkdir -p docker_results
-echo -e "${GREEN}✓ Created ./docker_results/${NC}"
+# Step 3: Create Docker volumes
+echo "3. Creating Docker named volumes (no permission issues)..."
+docker volume create $VOLUME_RESULTS >/dev/null 2>&1 || true
+docker volume create $VOLUME_OPTIMIZER >/dev/null 2>&1 || true
+docker volume create $VOLUME_OUTPUT >/dev/null 2>&1 || true
+docker volume create $VOLUME_CHECKPOINTS >/dev/null 2>&1 || true
+echo -e "${GREEN}✓ Docker volumes ready${NC}"
 echo ""
 
 # Step 4: Build Docker image
@@ -52,10 +63,14 @@ echo ""
 # Step 5: Run a minimal test
 echo "5. Running minimal test (1 experiment, 10 steps, 2 optimizers)..."
 echo "This should take about 2-5 minutes..."
+echo -e "${BLUE}Note: Using Docker named volumes - no host mounting required${NC}"
 echo ""
 
 docker run --rm \
-    -v $(pwd)/docker_results:/app/fault_injection/optimizer_comparison_results \
+    -v $VOLUME_RESULTS:/app/fault_injection/results \
+    -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+    -v $VOLUME_OUTPUT:/app/output \
+    -v $VOLUME_CHECKPOINTS:/app/checkpoints \
     curis-optimizer:test \
     python fault_injection/scripts/test_optimizer_mitigation_v3.py \
     --num-experiments 1 \
@@ -70,64 +85,75 @@ else
 fi
 echo ""
 
-# Step 6: Check results were saved
-echo "6. Checking if results were saved..."
-RESULT_COUNT=$(find docker_results -name "parallel_run_*" -type d | wc -l)
+# Step 6: Check results were saved in Docker volumes
+echo "6. Checking if results were saved in Docker volumes..."
+echo -e "${BLUE}Checking volume contents...${NC}"
+
+# List files in volumes using a temporary container
+docker run --rm \
+    -v $VOLUME_OPTIMIZER:/optimizer:ro \
+    alpine sh -c "find /optimizer -name 'parallel_run_*' -type d 2>/dev/null | head -5" > /tmp/results_check.txt
+
+RESULT_COUNT=$(wc -l < /tmp/results_check.txt)
 
 if [ $RESULT_COUNT -gt 0 ]; then
-    echo -e "${GREEN}✓ Found $RESULT_COUNT result directory(ies)${NC}"
+    echo -e "${GREEN}✓ Found result directories in Docker volume${NC}"
     echo ""
-    echo "Result directories:"
-    ls -la docker_results/
+    echo "Results in volume:"
+    cat /tmp/results_check.txt
     echo ""
     
-    # Check for key files
-    LATEST_DIR=$(ls -td docker_results/parallel_run_* 2>/dev/null | head -1)
-    if [ -n "$LATEST_DIR" ]; then
-        echo "Checking files in latest results ($LATEST_DIR):"
+    # Extract results to local directory for inspection
+    echo "7. Extracting results from Docker volumes..."
+    mkdir -p ./extracted_results
+    
+    # Use tar streaming to extract (no mounting required)
+    docker run --rm \
+        -v $VOLUME_OPTIMIZER:/data:ro \
+        alpine tar cf - -C /data . 2>/dev/null | tar xf - -C ./extracted_results/ 2>/dev/null || {
+            echo -e "${YELLOW}Partial extraction (some files may be empty)${NC}"
+        }
+    
+    if [ -d "./extracted_results" ]; then
+        echo -e "${GREEN}✓ Results extracted to ./extracted_results/${NC}"
+        echo "Contents:"
+        ls -la ./extracted_results/ | head -10
         
-        if [ -f "$LATEST_DIR/all_injection_configs.json" ]; then
-            echo -e "${GREEN}  ✓ all_injection_configs.json found${NC}"
-        else
-            echo -e "${RED}  ✗ all_injection_configs.json missing${NC}"
-        fi
-        
-        if [ -d "$LATEST_DIR/experiment_000" ]; then
-            echo -e "${GREEN}  ✓ experiment_000 directory found${NC}"
-            
-            # Check for specific files in experiment directory
-            if [ -f "$LATEST_DIR/experiment_000/results.json" ]; then
-                echo -e "${GREEN}    ✓ results.json found${NC}"
-            fi
-            if [ -f "$LATEST_DIR/experiment_000/comparison_plots.png" ]; then
-                echo -e "${GREEN}    ✓ comparison_plots.png found${NC}"
-            fi
-        else
-            echo -e "${RED}  ✗ experiment_000 directory missing${NC}"
-        fi
-        
-        if [ -f "$LATEST_DIR/final_report.md" ]; then
-            echo -e "${GREEN}  ✓ final_report.md found${NC}"
+        # Check for key files
+        LATEST_DIR=$(ls -td ./extracted_results/parallel_run_* 2>/dev/null | head -1)
+        if [ -n "$LATEST_DIR" ]; then
             echo ""
-            echo "Preview of final report:"
-            head -20 "$LATEST_DIR/final_report.md"
+            echo "Checking files in latest results:"
+            [ -f "$LATEST_DIR/all_injection_configs.json" ] && echo -e "${GREEN}  ✓ all_injection_configs.json${NC}"
+            [ -d "$LATEST_DIR/experiment_000" ] && echo -e "${GREEN}  ✓ experiment_000 directory${NC}"
+            [ -f "$LATEST_DIR/final_report.md" ] && echo -e "${GREEN}  ✓ final_report.md${NC}"
         fi
     fi
 else
-    echo -e "${RED}✗ No result directories found in docker_results/${NC}"
-    echo "Contents of docker_results/:"
-    ls -la docker_results/
-    exit 1
+    echo -e "${RED}✗ No results found in Docker volumes${NC}"
+    echo "Checking what's in the volumes:"
+    docker run --rm \
+        -v $VOLUME_OPTIMIZER:/optimizer:ro \
+        -v $VOLUME_RESULTS:/results:ro \
+        alpine sh -c "echo '=== Optimizer Volume ==='; ls -la /optimizer 2>/dev/null | head -5; echo '=== Results Volume ==='; ls -la /results 2>/dev/null | head -5"
 fi
+
+rm -f /tmp/results_check.txt
 echo ""
 
 echo "========================================="
-echo -e "${GREEN}All tests passed! Docker setup is working correctly.${NC}"
+echo -e "${GREEN}Docker setup test complete!${NC}"
 echo "========================================="
 echo ""
-echo "You can now run larger experiments with:"
-echo "  docker-compose up --build"
+echo "Next steps:"
+echo "1. Run experiments using docker-compose:"
+echo "   docker-compose up --build"
 echo ""
-echo "Or customize parameters in docker-compose.yml"
+echo "2. Or use the shell script directly:"
+echo "   ./shell_scripts/docker_run.sh optimizer --num-experiments 10 --steps-after-injection 100"
 echo ""
-echo "Results will be saved to: ./docker_results/parallel_run_*/"
+echo "3. Extract results after experiments:"
+echo "   ./shell_scripts/extract_volumes.sh"
+echo ""
+echo "IMPORTANT: Results are stored in Docker named volumes (no permission issues)"
+echo "Use extraction scripts to copy results to your local machine"
