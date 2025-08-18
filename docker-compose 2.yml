@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  fault-injection:
+    build: .
+    image: fault-injection-experiment:latest
+    container_name: fault_injection_runner
+    
+    # Mount volumes for data persistence
+    volumes:
+      # Mount results directory - all experiment outputs go here
+      - ./fault_injection/results:/app/fault_injection/results
+      - ./fault_injection/optimizer_comparison_results:/app/fault_injection/optimizer_comparison_results
+      
+      # Mount data directory if you have external datasets
+      - ./data:/app/data
+      
+      # Mount a general output directory
+      - ./output:/app/output
+      
+      # Optional: Mount the scripts directory for live code updates
+      # - ./fault_injection/scripts:/app/fault_injection/scripts:ro
+    
+    # Environment variables
+    environment:
+      - TF_CPP_MIN_LOG_LEVEL=1
+      - PYTHONUNBUFFERED=1
+      # For GPU support (if available)
+      - NVIDIA_VISIBLE_DEVICES=all
+      
+    # For GPU support, uncomment the following:
+    # runtime: nvidia
+    # or for newer Docker versions:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    
+    # Keep container running for interactive work
+    stdin_open: true
+    tty: true
+    
+    # Override default command - run bash for interactive mode
+    command: /bin/bash
+    
+    # Resource limits (adjust as needed)
+    mem_limit: 16g
+    cpus: '8'
+    
+    # Network mode
+    network_mode: bridge
