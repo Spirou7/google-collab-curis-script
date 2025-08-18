@@ -6,8 +6,8 @@ services:
     image: curis-optimizer:latest
     container_name: optimizer_experiment
     volumes:
-      # Mount results directory to host for easy access
-      - ./docker_results:/app/fault_injection/results
+      # Mount results directory to host for easy access - matches v2 script path
+      - ./docker_results:/app/fault_injection/optimizer_comparison_results
       # Mount the scripts directory for live code updates (optional)
       - ./fault_injection/scripts:/app/fault_injection/scripts:ro
     environment:
@@ -23,8 +23,8 @@ services:
     #           capabilities: [gpu]
     command: >
       python fault_injection/scripts/test_optimizer_mitigation_v3.py
-      --num-experiments 10
-      --steps-after-injection 100
+      --num-experiments 1
+      --steps-after-injection 10
       --optimizers adam sgd
     stdin_open: true
     tty: true
