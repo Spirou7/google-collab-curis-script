@@ -242,6 +242,11 @@ class ParallelOptimizerMitigationExperiment:
                 # Get layer outputs for injection
                 outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
                 
+                # Extract specific layer outputs
+                layer_inputs = l_inputs[inj_layer]
+                layer_kernels = l_kernels[inj_layer]
+                layer_outputs = l_outputs[inj_layer]
+                
                 # Create injection configuration
                 class DummyRecorder:
                     def write(self, text):
@@ -263,9 +268,9 @@ class ParallelOptimizerMitigationExperiment:
                     InjType[injection_config['fmodel']], 
                     None,
                     inj_layer,
-                    l_inputs, 
-                    l_kernels, 
-                    l_outputs, 
+                    layer_inputs, 
+                    layer_kernels, 
+                    layer_outputs, 
                     dummy_recorder,
                     inj_config,
                     inj_value,
@@ -1154,6 +1159,15 @@ def main():
     print("✓ Identical injection applied to all models simultaneously")
     print("✓ Fair comparison with same training context")
     print("✓ Comprehensive visualization and analysis")
+    print("="*80 + "\n")
+    
+    # Debug: Show parsed arguments
+    print(f"Parsed arguments:")
+    print(f"  num_experiments: {args.num_experiments}")
+    print(f"  steps_after_injection: {args.steps_after_injection}")
+    print(f"  optimizers: {args.optimizers}")
+    print(f"  seed: {args.seed}")
+    print(f"  learning_rate: {args.learning_rate}")
     print("="*80 + "\n")
     
     # Create and run experiment
