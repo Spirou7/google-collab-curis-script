@@ -103,8 +103,8 @@ This creates the `fault-injection-experiment:latest` image with all dependencies
 ./shell_scripts/docker_run.sh optimizer \
     --baseline adam \
     --test-optimizers sgd rmsprop adagrad \
-    --num-experiments 10 \
-    --steps-after-injection 200
+    --num-experiments 15 \
+    --steps-after-injection 100
 ```
 
 #### Full Study (Several hours, 100 experiments)

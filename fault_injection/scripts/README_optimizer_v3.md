@@ -18,7 +18,10 @@ This script (`test_optimizer_mitigation_v3.py`) tests how different optimizers r
 ./shell_scripts/docker_run.sh build
 
 # 2. Run the experiment (no permission issues!)
-./shell_scripts/docker_run.sh optimizer --num-experiments 1 --steps-after-injection 10 --optimizers adam sgd
+./shell_scripts/docker_run.sh optimizer \
+    --optimizers adam sgd \
+    --num-experiments 1 \
+    --steps-after-injection 10
 
 # 3. Extract results after completion
 ./shell_scripts/extract_volumes.sh
@@ -30,12 +33,26 @@ This script (`test_optimizer_mitigation_v3.py`) tests how different optimizers r
 
 #### Quick Test
 ```bash
-./shell_scripts/docker_run.sh optimizer --num-experiments 1 --steps-after-injection 10 --optimizers adam sgd
+./shell_scripts/docker_run.sh optimizer \
+    --optimizers adam sgd \
+    --num-experiments 1 \
+    --steps-after-injection 10
 ```
 
 #### Medium Experiment
 ```bash
-./shell_scripts/docker_run.sh optimizer --num-experiments 10 --steps-after-injection 100 --optimizers adam sgd rmsprop
+./shell_scripts/docker_run.sh optimizer \
+    --optimizers adam sgd rmsprop \
+    --num-experiments 10 \
+    --steps-after-injection 100
+```
+
+#### Large Experiment with Multiple Optimizers
+```bash
+./shell_scripts/docker_run.sh optimizer \
+    --optimizers adam sgd rmsprop adagrad adamw \
+    --num-experiments 15 \
+    --steps-after-injection 100
 ```
 
 #### Large Experiment (Background)
@@ -106,11 +123,15 @@ python fault_injection/scripts/test_optimizer_mitigation_v3.py
 ```
 
 ### Command Line Arguments
+- `--optimizers`: List of optimizers to test (default: adam sgd rmsprop adamw)
+  - **Note**: Unlike v2, there's no separate `--baseline` and `--test-optimizers`
+  - ALL specified optimizers are trained from scratch and compared equally
 - `--num-experiments`: Number of experiments to run (default: 10)
 - `--steps-after-injection`: Steps to continue training after injection (default: 100)
-- `--optimizers`: List of optimizers to test (default: adam sgd rmsprop adamw)
 - `--seed`: Base random seed for reproducibility (default: 42)
 - `--learning-rate`: Initial learning rate (default: 0.001)
+
+⚠️ **Important**: This script does NOT use `--baseline` or `--test-optimizers` arguments. Use `--optimizers` to specify all optimizers you want to compare.
 
 ### Example Commands
 
@@ -286,7 +307,26 @@ python fault_injection/scripts/test_optimizer_mitigation_v3.py --num-experiments
 ```
 
 ## Differences from V2
-- **V2**: Trains one optimizer, saves checkpoint, then tests others from that checkpoint
+
+### Architectural Changes
+- **V2**: Trains one baseline optimizer, saves checkpoint, then tests other optimizers from that checkpoint
 - **V3**: Trains ALL optimizers from scratch to ensure identical pre-injection context
 - **V3 Advantage**: Fairer comparison as all optimizers have same training history
 - **V3 Disadvantage**: Takes longer to run (trains multiple models per experiment)
+
+### Command Line Arguments
+- **V2 Arguments**:
+  - `--baseline`: The optimizer to train initially (e.g., adam)
+  - `--test-optimizers`: Other optimizers to test from checkpoint
+  
+- **V3 Arguments**:
+  - `--optimizers`: ALL optimizers to train and compare (no baseline concept)
+  
+Example migration from V2 to V3:
+```bash
+# V2 command:
+./run.sh --baseline adam --test-optimizers sgd rmsprop --num-experiments 10
+
+# Equivalent V3 command:
+./run.sh --optimizers adam sgd rmsprop --num-experiments 10
+```
