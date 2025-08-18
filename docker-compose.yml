@@ -1,46 +1,30 @@
 version: '3.8'
 
 services:
-  fault-injection:
-    image: fault-injection-experiment:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: fault_injection_runner
-    working_dir: /app
-    environment:
-      - HOME=/app
-      - PYTHONPATH=/app:$PYTHONPATH
-      - TF_CPP_MIN_LOG_LEVEL=1
-      - PYTHONUNBUFFERED=1
+  optimizer-experiment:
+    build: .
+    image: curis-optimizer:latest
+    container_name: optimizer_experiment
     volumes:
-      # Named volumes - Docker manages these internally
-      - fault_results:/app/fault_injection/results
-      - fault_optimizer:/app/fault_injection/optimizer_comparison_results
-      - fault_output:/app/output
-      - fault_checkpoints:/app/checkpoints
+      # Mount results directory to host for easy access
+      - ./docker_results:/app/fault_injection/results
+      # Mount the scripts directory for live code updates (optional)
+      - ./fault_injection/scripts:/app/fault_injection/scripts:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TF_CPP_MIN_LOG_LEVEL=2  # Reduce TensorFlow verbosity
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    command: >
+      python fault_injection/scripts/test_optimizer_mitigation_v3.py
+      --num-experiments 10
+      --steps-after-injection 100
+      --optimizers adam sgd
     stdin_open: true
     tty: true
-    command: /bin/bash
-
-  # Optional: GPU-enabled version
-  fault-injection-gpu:
-    extends: fault-injection
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-# Named volumes - Docker manages these, no host permissions needed
-volumes:
-  fault_results:
-    name: fault_injection_results
-  fault_optimizer:
-    name: fault_injection_optimizer
-  fault_output:
-    name: fault_injection_output
-  fault_checkpoints:
-    name: fault_injection_checkpoints
