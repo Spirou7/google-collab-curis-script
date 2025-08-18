@@ -8,8 +8,97 @@ This script (`test_optimizer_mitigation_v3.py`) tests how different optimizers r
 - **Synchronized Injection**: Same fault applied to all models at the exact same point
 - **Fair Comparison**: All optimizers have full training context before injection
 - **Comprehensive Analysis**: Detailed visualizations and metrics for recovery comparison
+- **Docker Support**: Fully integrated with Docker named volumes to avoid permission issues
 
-## Usage
+## Running with Docker (Recommended for Remote/Cluster)
+
+### Quick Start with Docker
+```bash
+# 1. Build the Docker image
+./shell_scripts/docker_run.sh build
+
+# 2. Run the experiment (no permission issues!)
+./shell_scripts/docker_run.sh optimizer --num-experiments 1 --steps-after-injection 10 --optimizers adam sgd
+
+# 3. Extract results after completion
+./shell_scripts/extract_volumes.sh
+
+# Results will be in ./extracted_results/optimizer/parallel_run_*/
+```
+
+### Docker Examples
+
+#### Quick Test
+```bash
+./shell_scripts/docker_run.sh optimizer --num-experiments 1 --steps-after-injection 10 --optimizers adam sgd
+```
+
+#### Medium Experiment
+```bash
+./shell_scripts/docker_run.sh optimizer --num-experiments 10 --steps-after-injection 100 --optimizers adam sgd rmsprop
+```
+
+#### Large Experiment (Background)
+```bash
+./shell_scripts/docker_run.sh background fault_injection/scripts/test_optimizer_mitigation_v3.py \
+    --num-experiments 50 --steps-after-injection 200 --optimizers adam sgd rmsprop adamw
+
+# Monitor logs
+docker logs -f fault_injection_runner
+```
+
+#### With GPU Support
+```bash
+./shell_scripts/docker_run.sh gpu fault_injection/scripts/test_optimizer_mitigation_v3.py \
+    --num-experiments 20 --steps-after-injection 100 --optimizers adam sgd rmsprop adamw
+```
+
+### Docker-Compose Method
+```bash
+# Edit docker-compose.yml to set your parameters, then:
+docker-compose up --build
+
+# Extract results after completion
+./shell_scripts/extract_volumes.sh
+```
+
+### Docker Volume Management
+
+#### List Results in Volumes
+```bash
+./shell_scripts/docker_run.sh list-results
+```
+
+#### Extract All Results
+```bash
+# Method 1: Using extraction script (recommended)
+./shell_scripts/extract_volumes.sh
+
+# Method 2: Using docker_run.sh
+./shell_scripts/docker_run.sh copy-results
+
+# Method 3: Safe extraction (no mounting)
+./shell_scripts/docker_run.sh extract-safe
+```
+
+#### Backup Volumes
+```bash
+./shell_scripts/docker_run.sh backup
+```
+
+#### Clean Volumes (Warning: Deletes Data)
+```bash
+./shell_scripts/docker_run.sh clean-volumes
+```
+
+### Why Use Docker?
+- **No Permission Issues**: Uses Docker named volumes (Docker-managed storage)
+- **Portable**: Runs identically on any system with Docker
+- **Clean**: All dependencies contained, no system pollution
+- **Remote-Friendly**: Perfect for cluster/cloud deployment
+- **Data Persistence**: Results saved in volumes, survive container restarts
+
+## Running Locally (MacOS/Linux)
 
 ### Basic Command
 ```bash
@@ -75,6 +164,7 @@ python fault_injection/scripts/test_optimizer_mitigation_v3.py \
 
 ## Output Structure
 
+### Local Execution
 The script creates a timestamped results directory:
 ```
 parallel_optimizer_results_YYYYMMDD_HHMMSS/
@@ -90,6 +180,22 @@ parallel_optimizer_results_YYYYMMDD_HHMMSS/
 ├── intermediate_summary.json        # Summary after every 5 experiments
 ├── final_report.md                  # Comprehensive analysis report
 └── summary_visualizations.png       # Aggregate analysis across all experiments
+```
+
+### Docker Execution
+When running with Docker, results are saved in Docker volumes and extracted to:
+```
+extracted_results/
+├── optimizer/                       # From fault_injection_optimizer volume
+│   └── parallel_run_YYYYMMDD_HHMMSS/
+│       ├── all_injection_configs.json
+│       ├── experiment_000/
+│       ├── intermediate_summary.json
+│       ├── final_report.md
+│       └── summary_visualizations.png
+├── results/                         # From fault_injection_results volume
+├── output/                          # From fault_injection_output volume
+└── checkpoints/                     # From fault_injection_checkpoints volume
 ```
 
 ## Performance Considerations
@@ -155,6 +261,29 @@ The `final_report.md` includes:
 ### NaN/Inf errors
 - This is expected behavior when models diverge after injection
 - The script handles these cases and marks them as diverged
+
+### Docker Permission Errors
+- The script uses Docker named volumes to avoid permission issues
+- Never use bind mounts like `-v $(pwd)/results:/app/results`
+- Always extract results using the provided scripts
+
+### No Results Found After Docker Run
+```bash
+# Check if data exists in volumes
+./shell_scripts/docker_run.sh list-results
+
+# If data exists, extract it
+./shell_scripts/extract_volumes.sh
+```
+
+### Docker Container Exits Immediately
+```bash
+# Run interactively to see errors
+./shell_scripts/docker_run.sh interactive
+
+# Then manually run the script
+python fault_injection/scripts/test_optimizer_mitigation_v3.py --num-experiments 1
+```
 
 ## Differences from V2
 - **V2**: Trains one optimizer, saves checkpoint, then tests others from that checkpoint
