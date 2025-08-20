@@ -148,7 +148,7 @@ class SequentialOptimizerExperiment:
             'stage': self.stage if self.stage else random.choice(self.available_stages),
             'fmodel': self.fmodel if self.fmodel else random.choice(self.available_fmodels),
             'target_layer': self.target_layer,  # Will be set later if None
-            'target_epoch': self.target_epoch if self.target_epoch is not None else random.randint(0, 3),
+            'target_epoch': self.target_epoch if self.target_epoch is not None else random.randint(0, 10),
             'target_step': self.target_step if self.target_step is not None else random.randint(0, 49),
             'learning_rate': self.learning_rate if self.learning_rate else random.choice(self.learning_rate_range),
             'inj_pos': self.inj_pos,
@@ -352,6 +352,7 @@ class SequentialOptimizerExperiment:
             return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
         
         def bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag):
+            print("bkwd_inj_train_step2")
             images, labels = iter_inputs
             with tf.GradientTape() as tape:
                 outputs, l_inputs, l_kernels, l_outputs = model(images, training=True, inject=False)
@@ -889,7 +890,7 @@ def main():
     parser.add_argument('--target-layer', type=str, default=None,
                        help='Target layer for injection (default: random)')
     parser.add_argument('--target-epoch', type=int, default=None,
-                       help='Target epoch for injection (default: random 0-3)')
+                       help='Target epoch for injection (default: random 0-10)')
     parser.add_argument('--target-step', type=int, default=None,
                        help='Target step for injection (default: random 0-49)')
     parser.add_argument('--learning-rate', type=float, default=None,
