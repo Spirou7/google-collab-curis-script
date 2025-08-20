@@ -32,4 +32,4 @@ RUN mkdir -p /app/results
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Default command (can be overridden)
-CMD ["python", "fault_injection/scripts/test_optimizer_mitigation_v3.py", "--help"]
+CMD ["python", "fault_injection/scripts/test_optimizer_mitigation_v4.py", "--help"]
