@@ -566,7 +566,8 @@ class SequentialOptimizerExperiment:
             'degradation_rate': degradation_rate,
             'nan_weights': nan_weights,
             'inf_weights': inf_weights,
-            'injection_performed': injection_performed
+            'injection_performed': injection_performed,
+            'actual_injection_step': injection_global_step  # Pass the actual injection step
         }
     
     def run_single_experiment(self, experiment_id: int) -> Dict:
@@ -639,9 +640,18 @@ class SequentialOptimizerExperiment:
         
         colors = plt.cm.tab10(np.linspace(0, 1, len(self.optimizers_to_test)))
         
-        # Calculate injection step
-        steps_per_epoch = math.ceil(1000 / config.BATCH_SIZE)  # Approximate
-        injection_step = injection_params['target_epoch'] * steps_per_epoch + injection_params['target_step']
+        # Get the actual injection step from the first optimizer's results
+        injection_step = None
+        for result in optimizer_results.values():
+            if 'actual_injection_step' in result:
+                injection_step = result['actual_injection_step']
+                break
+        
+        # Fallback calculation if not found (shouldn't happen with updated code)
+        if injection_step is None:
+            # CIFAR-10 has 50,000 training samples
+            steps_per_epoch = math.ceil(50000 / config.BATCH_SIZE)
+            injection_step = injection_params['target_epoch'] * steps_per_epoch + injection_params['target_step']
         
         # Plot 1: Accuracy over time
         for i, (opt_name, result) in enumerate(optimizer_results.items()):
