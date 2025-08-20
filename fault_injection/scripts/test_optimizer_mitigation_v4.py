@@ -383,8 +383,20 @@ class SequentialOptimizerExperiment:
         history = {
             'steps': [],
             'accuracy': [],
-            'loss': []
+            'loss': [],
+            'optimizer_state_magnitudes': []  # Track optimizer state magnitudes
         }
+        
+        def get_optimizer_state_magnitude():
+            """Calculate total magnitude of optimizer state variables."""
+            total_magnitude = 0.0
+            
+            # Get optimizer variables (momentum, variance, etc.)
+            for var in model.optimizer.variables():
+                magnitude = tf.norm(var).numpy()
+                total_magnitude += magnitude
+            
+            return total_magnitude
         
         # Train until injection point
         train_iterator = iter(train_dataset)
@@ -500,6 +512,10 @@ class SequentialOptimizerExperiment:
             history['accuracy'].append(float(train_accuracy.result()))
             history['loss'].append(float(train_loss.result()))
             
+            # Track optimizer state magnitude
+            if len(model.optimizer.variables()) > 0:
+                history['optimizer_state_magnitudes'].append(get_optimizer_state_magnitude())
+            
             # Progress update
             if global_step % 50 == 0:
                 record(f"Step {global_step}: accuracy={train_accuracy.result():.4f}, "
@@ -608,7 +624,7 @@ class SequentialOptimizerExperiment:
     def create_experiment_visualization(self, optimizer_results: Dict, injection_params: Dict, 
                                        experiment_dir: str):
         """Create visualization comparing optimizer performance."""
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+        fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(15, 18))
         
         colors = plt.cm.tab10(np.linspace(0, 1, len(self.optimizers_to_test)))
         
@@ -674,8 +690,28 @@ class SequentialOptimizerExperiment:
         ax3.grid(True, alpha=0.3, axis='y')
         ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
         
-        # Plot 4: Injection details
-        ax4.axis('off')
+        # Plot 4: Optimizer State Magnitudes over time
+        for i, (opt_name, result) in enumerate(optimizer_results.items()):
+            if 'history' in result and 'optimizer_state_magnitudes' in result['history']:
+                history = result['history']
+                if history['optimizer_state_magnitudes']:
+                    # Ensure we have matching lengths
+                    steps = history['steps'][:len(history['optimizer_state_magnitudes'])]
+                    magnitudes = history['optimizer_state_magnitudes']
+                    ax4.plot(steps, magnitudes,
+                            color=colors[i], label=opt_name,
+                            linewidth=2, alpha=0.8)
+        
+        ax4.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
+        ax4.set_xlabel('Training Step')
+        ax4.set_ylabel('Optimizer State Magnitude')
+        ax4.set_title('Optimizer Internal State Magnitude (Momentum/Variance)')
+        ax4.legend(loc='best')
+        ax4.grid(True, alpha=0.3)
+        ax4.set_yscale('log')  # Log scale often better for magnitudes
+        
+        # Plot 5: Injection details
+        ax5.axis('off')
         injection_text = f"""Injection Configuration:
         
 Model: {injection_params['model']}
@@ -695,8 +731,11 @@ Post-Injection Results:
                 injection_text += f"\n  NaN weights: {result.get('nan_weights', 0)}"
                 injection_text += f"\n  Inf weights: {result.get('inf_weights', 0)}"
         
-        ax4.text(0.1, 0.9, injection_text, transform=ax4.transAxes,
+        ax5.text(0.1, 0.9, injection_text, transform=ax5.transAxes,
                 fontsize=10, verticalalignment='top', fontfamily='monospace')
+        
+        # Plot 6: Empty or additional analysis
+        ax6.axis('off')
         
         plt.tight_layout()
         plot_path = os.path.join(experiment_dir, 'comparison_plots.png')
