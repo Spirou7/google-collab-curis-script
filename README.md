@@ -12,7 +12,6 @@
   --model resnet18 \
   --stage bkwd_inject \
   --fmodel RD \
-  --target-layer basicblock_1_basic_0_conv1 \
   --target-epoch 0 \
   --target-step 5 \
   --learning-rate 0.001 \
