@@ -293,8 +293,8 @@ class SequentialOptimizerExperiment:
         
         # Training functions (directly from random_injection.py)
         @tf.function
-        def train_step(iterator):
-            images, labels = next(iterator)
+        def train_step(inputs):
+            images, labels = inputs
             with tf.GradientTape() as tape:
                 outputs, _, _, l_outputs = model(images, training=True, inject=False)
                 predictions = outputs['logits']
