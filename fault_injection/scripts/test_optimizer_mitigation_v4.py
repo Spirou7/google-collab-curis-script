@@ -115,10 +115,10 @@ class SequentialOptimizerExperiment:
         # Setup results directory with proper Docker volume support
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Use /app/results for Docker, fallback to local results directory
-        if os.path.exists("/app/results"):
-            # Running in Docker container
-            self.results_base_dir = os.path.join("/app/results", f"optimizer_comparison_{timestamp}")
+        # Use Docker volume path if available, fallback to local results directory
+        if os.path.exists("/app/fault_injection/results"):
+            # Running in Docker container with mounted volume
+            self.results_base_dir = os.path.join("/app/fault_injection/results", f"optimizer_comparison_{timestamp}")
         else:
             # Running locally
             self.results_base_dir = os.path.join(
