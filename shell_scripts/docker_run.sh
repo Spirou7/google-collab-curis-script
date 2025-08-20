@@ -494,7 +494,7 @@ case "$1" in
         ;;
     optimizer)
         shift
-        run_experiment "fault_injection/scripts/test_optimizer_mitigation_v3.py" $@
+        run_experiment "fault_injection/scripts/test_optimizer_mitigation_v4.py" $@
         ;;
     copy-results)
         copy_results

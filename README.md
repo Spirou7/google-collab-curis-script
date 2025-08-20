@@ -7,11 +7,28 @@
 # Build Docker Image
 ./shell_scripts/docker_run.sh build
 
-# Run Experiment
+# Run Experiment with All Available Parameters
 ./shell_scripts/docker_run.sh optimizer \
+  --model resnet18 \
+  --stage bkwd_inject \
+  --fmodel RD \
+  --target-layer basicblock_1_basic_0_conv1 \
+  --target-epoch 0 \
+  --target-step 5 \
+  --learning-rate 0.001 \
+  --min-val 3.6e2 \
+  --max-val 1.2e8 \
+  --seed 42 \
+  --max-global-steps 500 \
+  --optimizers adam sgd \
   --num-experiments 1 \
-  --steps-after-injection 10 \
-  --optimizers adam sgd rmsprop
+  --steps-after-injection 10
+
+# Run Experiment with Minimal Parameters (uses random values for unspecified)
+./shell_scripts/docker_run.sh optimizer \
+  --num-experiments 3 \
+  --steps-after-injection 50 \
+  --optimizers adam sgd
 ```
 
 ### For Apple Silicon Macs (M1/M2/M3)
