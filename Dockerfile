@@ -1,5 +1,5 @@
 # Use official TensorFlow image as base
-FROM tensorflow/tensorflow:2.13.0
+FROM tensorflow/tensorflow:2.13.0-gpu
 
 # Set working directory
 WORKDIR /app
