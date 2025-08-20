@@ -13,8 +13,8 @@
   --stage bkwd_inject \
   --fmodel N16_RD \
   --learning-rate 0.001 \
-  --min-val 3.6e2 \
-  --max-val 1.2e200 \
+  --min-val 3.6e6 \
+  --max-val 1.2e10 \
   --seed 42 \
   --max-global-steps 10000 \
   --optimizers adam sgd \

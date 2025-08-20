@@ -250,7 +250,7 @@ class SequentialOptimizerExperiment:
             return optimizer_class(learning_rate=lr_schedule)
     
     def train_with_injection(self, optimizer_name: str, injection_params: Dict, 
-                            experiment_dir: str) -> Dict:
+                            experiment_dir: str, stored_injection: Dict = None) -> Dict:
         """
         Train a single optimizer with injection.
         Adapted from random_injection.py's run_training_simulation.
@@ -420,6 +420,8 @@ class SequentialOptimizerExperiment:
         post_injection_loss = None
         nan_weights = 0
         inf_weights = 0
+        actual_inj_pos = None
+        actual_inj_values = None
         
         while global_step <= injection_global_step + self.steps_after_injection:
             # Log current training step
@@ -466,14 +468,36 @@ class SequentialOptimizerExperiment:
                     record("Backward injection\n")
                     l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
                 
-                # Generate injection arguments using inject_utils
-                if injection_params['min_val'] is not None and injection_params['max_val'] is not None:
-                    record("Using random injection with min/max range\n")
+                # Generate or reuse injection arguments
+                if stored_injection and stored_injection['inj_pos'] is not None:
+                    # Reuse the exact same injection from the first optimizer
+                    record("Using stored injection from first optimizer\n")
+                    record(f"Stored positions: {stored_injection['inj_pos']}\n")
+                    record(f"Stored values: {stored_injection['inj_values']}\n")
+                    
+                    inj_args, inj_flag = get_replay_args(
+                        InjType[injection_params['fmodel']], inj_config, None, inj_layer,
+                        l_inputs, l_kernels, l_outputs, train_recorder,
+                        inj_pos=stored_injection['inj_pos'], 
+                        inj_values=stored_injection['inj_values']
+                    )
+                    
+                    # Store for return (redundant but for consistency)
+                    actual_inj_pos = stored_injection['inj_pos']
+                    actual_inj_values = stored_injection['inj_values']
+                    
+                elif injection_params['min_val'] is not None and injection_params['max_val'] is not None:
+                    record("Generating NEW random injection with min/max range\n")
                     inj_args, inj_flag = get_inj_args_with_random_range(
                         InjType[injection_params['fmodel']], None, inj_layer,
                         l_inputs, l_kernels, l_outputs, train_recorder,
                         inj_config, injection_params['min_val'], injection_params['max_val']
                     )
+                    
+                    # Extract the actual positions and values for storage
+                    actual_inj_pos = inj_config.inj_pos
+                    actual_inj_values = inj_config.inj_values
+                    
                 elif injection_params['inj_pos'] and injection_params['inj_values']:
                     record("Using specific injection position and value\n")
                     inj_args, inj_flag = get_replay_args(
@@ -482,12 +506,19 @@ class SequentialOptimizerExperiment:
                         inj_pos=injection_params['inj_pos'], 
                         inj_values=injection_params['inj_values']
                     )
+                    
+                    actual_inj_pos = injection_params['inj_pos']
+                    actual_inj_values = injection_params['inj_values']
+                    
                 else:
                     record("Using random injection\n")
                     inj_args, inj_flag = get_inj_args(
                         InjType[injection_params['fmodel']], None, inj_layer,
                         l_inputs, l_kernels, l_outputs, train_recorder, inj_config
                     )
+                    
+                    actual_inj_pos = inj_config.inj_pos
+                    actual_inj_values = inj_config.inj_values
                 
                 # Perform injection
                 if 'fwrd' in injection_params['stage']:
@@ -567,7 +598,9 @@ class SequentialOptimizerExperiment:
             'nan_weights': nan_weights,
             'inf_weights': inf_weights,
             'injection_performed': injection_performed,
-            'actual_injection_step': injection_global_step  # Pass the actual injection step
+            'actual_injection_step': injection_global_step,  # Pass the actual injection step
+            'injection_pos': actual_inj_pos if injection_performed else None,
+            'injection_values': actual_inj_values if injection_performed else None
         }
     
     def run_single_experiment(self, experiment_id: int) -> Dict:
@@ -593,17 +626,28 @@ class SequentialOptimizerExperiment:
         for key, value in injection_params.items():
             print(f"  {key}: {value}")
         
+        # Storage for the exact injection to reuse across optimizers
+        stored_injection = {'inj_pos': None, 'inj_values': None}
+        
         # Run each optimizer sequentially with the same injection
         optimizer_results = {}
         
-        for optimizer_name in self.optimizers_to_test:
+        for i, optimizer_name in enumerate(self.optimizers_to_test):
             print(f"Training with {optimizer_name} optimizer")
             try:
+                # Pass the stored injection for reuse (None for first optimizer)
                 result = self.train_with_injection(
                     optimizer_name,
                     injection_params,
-                    experiment_dir
+                    experiment_dir,
+                    stored_injection if i > 0 else None
                 )
+                
+                # Store the injection from the first optimizer
+                if i == 0 and result.get('injection_pos') is not None:
+                    stored_injection['inj_pos'] = result['injection_pos']
+                    stored_injection['inj_values'] = result['injection_values']
+                
                 optimizer_results[optimizer_name] = result
                 
             except Exception as e:
