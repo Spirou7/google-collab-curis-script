@@ -47,6 +47,27 @@ check_docker() {
     fi
 }
 
+# Function to check for existing container
+check_existing_container() {
+    if docker ps -q -f name=$CONTAINER_NAME 2>/dev/null | grep -q .; then
+        print_warning "Container '$CONTAINER_NAME' is already running"
+        print_info "Stop it with: docker stop $CONTAINER_NAME"
+        print_info "Or remove it with: docker rm -f $CONTAINER_NAME"
+        echo ""
+        read -p "Do you want to stop the existing container? (y/n): " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            print_message "Stopping existing container..."
+            docker stop $CONTAINER_NAME >/dev/null 2>&1
+            docker rm $CONTAINER_NAME >/dev/null 2>&1
+            print_message "Container stopped and removed"
+        else
+            print_error "Cannot proceed with existing container running"
+            exit 1
+        fi
+    fi
+}
+
 # Function to create volumes if they don't exist
 create_volumes() {
     print_message "Ensuring Docker volumes exist..."
@@ -69,26 +90,46 @@ build_image() {
 
 # Function to run interactive shell
 run_interactive() {
+    check_existing_container
     create_volumes
     print_message "Starting interactive container with named volumes..."
     print_info "Files will be saved in Docker volumes (no host mounting)"
     print_info "Use 'exit' to leave the container"
     print_info "Use './shell_scripts/docker_run.sh copy-results' to extract files after"
     
-    docker run -it --rm \
-        --name $CONTAINER_NAME \
-        -v $VOLUME_RESULTS:/app/fault_injection/results \
-        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
-        -v $VOLUME_OUTPUT:/app/output \
-        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
-        -e HOME=/app \
-        -w /app \
-        $IMAGE_NAME \
-        /bin/bash
+    # Check if we're in a TTY
+    if [ -t 0 ] && [ -t 1 ]; then
+        # We have a TTY, use interactive mode
+        docker run -it --rm \
+            --name $CONTAINER_NAME \
+            -v $VOLUME_RESULTS:/app/fault_injection/results \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+            -v $VOLUME_OUTPUT:/app/output \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints \
+            -e HOME=/app \
+            -w /app \
+            $IMAGE_NAME \
+            /bin/bash
+    else
+        # No TTY, run without -it flags
+        print_warning "No TTY detected. Running in non-interactive mode."
+        print_info "Container will start but you won't get an interactive shell."
+        docker run --rm \
+            --name $CONTAINER_NAME \
+            -v $VOLUME_RESULTS:/app/fault_injection/results \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+            -v $VOLUME_OUTPUT:/app/output \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints \
+            -e HOME=/app \
+            -w /app \
+            $IMAGE_NAME \
+            /bin/bash
+    fi
 }
 
 # Function to run experiment
 run_experiment() {
+    check_existing_container
     create_volumes
     local script_path=$1
     shift
@@ -98,16 +139,30 @@ run_experiment() {
     print_message "Arguments: $args"
     print_info "Results will be saved in Docker volumes"
     
-    docker run -it --rm \
-        --name $CONTAINER_NAME \
-        -v $VOLUME_RESULTS:/app/fault_injection/results \
-        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
-        -v $VOLUME_OUTPUT:/app/output \
-        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
-        -e HOME=/app \
-        -w /app \
-        $IMAGE_NAME \
-        python $script_path $args
+    # Check if we're in a TTY
+    if [ -t 0 ] && [ -t 1 ]; then
+        docker run -it --rm \
+            --name $CONTAINER_NAME \
+            -v $VOLUME_RESULTS:/app/fault_injection/results \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+            -v $VOLUME_OUTPUT:/app/output \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints \
+            -e HOME=/app \
+            -w /app \
+            $IMAGE_NAME \
+            python $script_path $args
+    else
+        docker run --rm \
+            --name $CONTAINER_NAME \
+            -v $VOLUME_RESULTS:/app/fault_injection/results \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+            -v $VOLUME_OUTPUT:/app/output \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints \
+            -e HOME=/app \
+            -w /app \
+            $IMAGE_NAME \
+            python $script_path $args
+    fi
     
     print_message "Experiment completed!"
     print_info "To extract results, run: ./shell_scripts/docker_run.sh copy-results"
@@ -115,6 +170,7 @@ run_experiment() {
 
 # Function to run with GPU support
 run_with_gpu() {
+    check_existing_container
     create_volumes
     local script_path=$1
     shift
@@ -122,23 +178,39 @@ run_with_gpu() {
     
     print_message "Running experiment with GPU support: $script_path"
     
-    docker run -it --rm \
-        --gpus all \
-        --name $CONTAINER_NAME \
-        -v $VOLUME_RESULTS:/app/fault_injection/results \
-        -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
-        -v $VOLUME_OUTPUT:/app/output \
-        -v $VOLUME_CHECKPOINTS:/app/checkpoints \
-        -e HOME=/app \
-        -w /app \
-        $IMAGE_NAME \
-        python $script_path $args
+    # Check if we're in a TTY
+    if [ -t 0 ] && [ -t 1 ]; then
+        docker run -it --rm \
+            --gpus all \
+            --name $CONTAINER_NAME \
+            -v $VOLUME_RESULTS:/app/fault_injection/results \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+            -v $VOLUME_OUTPUT:/app/output \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints \
+            -e HOME=/app \
+            -w /app \
+            $IMAGE_NAME \
+            python $script_path $args
+    else
+        docker run --rm \
+            --gpus all \
+            --name $CONTAINER_NAME \
+            -v $VOLUME_RESULTS:/app/fault_injection/results \
+            -v $VOLUME_OPTIMIZER:/app/fault_injection/optimizer_comparison_results \
+            -v $VOLUME_OUTPUT:/app/output \
+            -v $VOLUME_CHECKPOINTS:/app/checkpoints \
+            -e HOME=/app \
+            -w /app \
+            $IMAGE_NAME \
+            python $script_path $args
+    fi
     
     print_info "To extract results, run: ./shell_scripts/docker_run.sh copy-results"
 }
 
 # Function to run in background (detached)
 run_background() {
+    check_existing_container
     create_volumes
     local script_path=$1
     shift
