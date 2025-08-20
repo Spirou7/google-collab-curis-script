@@ -115,10 +115,13 @@ class SequentialOptimizerExperiment:
         # Setup results directory with proper Docker volume support
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Use Docker volume path if available, fallback to local results directory
-        if os.path.exists("/app/fault_injection/results"):
-            # Running in Docker container with mounted volume
-            self.results_base_dir = os.path.join("/app/fault_injection/results", f"optimizer_comparison_{timestamp}")
+        # Check if we're in Docker by looking for the /app directory
+        if os.path.exists("/app"):
+            # Running in Docker container - use the mounted volume path
+            # The volume is mounted at /app/fault_injection/results
+            volume_path = "/app/fault_injection/results"
+            os.makedirs(volume_path, exist_ok=True)
+            self.results_base_dir = os.path.join(volume_path, f"optimizer_comparison_{timestamp}")
         else:
             # Running locally
             self.results_base_dir = os.path.join(
@@ -485,12 +488,12 @@ class SequentialOptimizerExperiment:
             else:
                 # Normal training step
                 try:
-                    images, labels = next(train_iterator)
+                    batch_data = next(train_iterator)
                 except StopIteration:
                     train_iterator = iter(train_dataset)
-                    images, labels = next(train_iterator)
+                    batch_data = next(train_iterator)
                 
-                losses = train_step(train_iterator)
+                losses = train_step(batch_data)
             
             # Record metrics
             history['steps'].append(global_step)
