@@ -396,6 +396,9 @@ class SequentialOptimizerExperiment:
         inf_weights = 0
         
         while global_step <= injection_global_step + self.steps_after_injection:
+            # Log current training step
+            print(f"Training step {global_step}")
+            
             # Check for early termination
             if injection_params['max_global_steps'] and global_step >= injection_params['max_global_steps']:
                 record(f"Early termination at step {global_step}\n")
