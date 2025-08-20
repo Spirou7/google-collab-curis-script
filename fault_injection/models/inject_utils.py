@@ -279,12 +279,35 @@ def choose_inj_pos_with_random_range(target, inj_type, train_recorder, db_st, mi
     db_st.inj_values = []
     for pos in positions:
         ori_val = target[pos]
-        val_delta = np.random.uniform(low=min_val, high=max_val)
+        
+        # Calculate order of magnitude range
+        if min_val > 0 and max_val > 0:
+            min_order = np.floor(np.log10(min_val))
+            max_order = np.floor(np.log10(max_val))
+        else:
+            # Fallback to original method if values are not positive
+            val_delta = np.random.uniform(low=min_val, high=max_val)
+            mask[pos] = 0
+            delta[pos] = val_delta
+            record(train_recorder, "Position is {}, Golden data is {}, inject data is {}\n".format(pos, ori_val, val_delta))
+            db_st.inj_values.append(val_delta)
+            continue
+        
+        # Randomly choose order of magnitude
+        random_order = np.random.uniform(min_order, max_order)
+        
+        # Randomly choose coefficient between 0 (exclusive) and 10 (exclusive)
+        # Using uniform(0.1, 9.9) to avoid exact 0 and 10
+        coefficient = np.random.uniform(0.1, 9.9)
+        
+        # Calculate final value
+        val_delta = coefficient * (10 ** random_order)
         
         mask[pos] = 0
         delta[pos] = val_delta
 
-        record(train_recorder, "Position is {}, Golden data is {}, inject data is {}\n".format(pos, ori_val, val_delta))
+        record(train_recorder, "Position is {}, Golden data is {}, inject data is {} (coef={:.2f}, order={:.2f})\n".format(
+            pos, ori_val, val_delta, coefficient, random_order))
         db_st.inj_values.append(val_delta)
 
     return mask, delta

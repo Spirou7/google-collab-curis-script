@@ -996,6 +996,8 @@ class ParallelOptimizerMitigationExperiment:
         ax2 = plt.subplot(2, 3, 2)
         
         max_steps = self.steps_after_injection + 50
+        pre_injection_steps = 10  # Number of steps to show before injection
+        
         for optimizer in self.optimizers_to_test:
             avg_trajectory = []
             
@@ -1008,8 +1010,9 @@ class ParallelOptimizerMitigationExperiment:
                         injection_idx = result['injection_config']['target_epoch'] * \
                                       math.ceil(1000 / config.BATCH_SIZE) + \
                                       result['injection_config']['target_step']
-                        if injection_idx + step_idx - 10 < len(history['accuracy']):
-                            step_accuracies.append(history['accuracy'][injection_idx + step_idx - 10])
+                        actual_idx = injection_idx + step_idx - pre_injection_steps
+                        if 0 <= actual_idx < len(history['accuracy']):
+                            step_accuracies.append(history['accuracy'][actual_idx])
                 
                 if step_accuracies:
                     avg_trajectory.append(np.mean(step_accuracies))
@@ -1017,7 +1020,7 @@ class ParallelOptimizerMitigationExperiment:
             if avg_trajectory:
                 ax2.plot(range(len(avg_trajectory)), avg_trajectory, label=optimizer, linewidth=2)
         
-        ax2.axvline(x=10, color='red', linestyle='--', alpha=0.5, label='Injection')
+        ax2.axvline(x=pre_injection_steps, color='red', linestyle='--', alpha=0.5, label='Injection')
         ax2.set_xlabel('Steps Relative to Injection')
         ax2.set_ylabel('Average Accuracy')
         ax2.set_title('Average Recovery Trajectories')
