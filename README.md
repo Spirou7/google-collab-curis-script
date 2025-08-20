@@ -73,6 +73,11 @@ docker run -it --rm --platform linux/amd64 \
 ./shell_scripts/extract_volumes.sh
 ```
 
+### Clear All Docker Volumes
+```bash
+./shell_scripts/clear_volumes.sh
+```
+
 ## Available Commands
 
 - `build`: Build the Docker image
