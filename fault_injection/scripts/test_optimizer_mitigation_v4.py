@@ -569,6 +569,7 @@ class SequentialOptimizerExperiment:
         optimizer_results = {}
         
         for optimizer_name in self.optimizers_to_test:
+            print(f"Training with {optimizer_name} optimizer")
             try:
                 result = self.train_with_injection(
                     optimizer_name,
