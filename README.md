@@ -9,8 +9,8 @@
 
 # Run Experiment
 ./shell_scripts/docker_run.sh optimizer \
-  --num-experiments 5 \
-  --steps-after-injection 100 \
+  --num-experiments 1 \
+  --steps-after-injection 10 \
   --optimizers adam sgd rmsprop
 ```
 
