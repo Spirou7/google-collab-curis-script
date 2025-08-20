@@ -12,7 +12,7 @@
   --model resnet18 \
   --stage bkwd_inject \
   --fmodel RD \
-  --target-epoch 1 \
+  --target-epoch 0 \
   --target-step 5 \
   --learning-rate 0.001 \
   --min-val 3.6e300 \
@@ -21,7 +21,7 @@
   --max-global-steps 500 \
   --optimizers adam sgd \
   --num-experiments 1 \
-  --steps-after-injection 100
+  --steps-after-injection 20
 
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \

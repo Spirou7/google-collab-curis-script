@@ -393,7 +393,17 @@ class SequentialOptimizerExperiment:
             
             # Get optimizer variables (momentum, variance, etc.)
             for var in model.optimizer.variables():
-                magnitude = tf.norm(var).numpy()
+                # Skip integer variables (like step counters)
+                if var.dtype in [tf.int32, tf.int64]:
+                    continue
+                    
+                # Convert to float32 if needed and calculate norm
+                if var.dtype != tf.float32:
+                    var_float = tf.cast(var, tf.float32)
+                else:
+                    var_float = var
+                    
+                magnitude = tf.norm(var_float).numpy()
                 total_magnitude += magnitude
             
             return total_magnitude
