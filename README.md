@@ -31,8 +31,8 @@
     --seed 43 \
     --max-global-steps 10000 \
     --optimizers adam sgd_vanilla \
-    --num-experiments 1 \
-    --steps-after-injection 10
+    --num-experiments 200 \
+    --steps-after-injection 500
 
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \

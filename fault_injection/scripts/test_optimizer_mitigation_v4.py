@@ -396,6 +396,7 @@ class SequentialOptimizerExperiment:
         def get_optimizer_state_magnitude():
             """Calculate total magnitude of optimizer state variables."""
             total_magnitude = 0.0
+            var_count = 0
             
             # Get optimizer variables (momentum, variance, etc.)
             for var in model.optimizer.variables():
@@ -411,12 +412,18 @@ class SequentialOptimizerExperiment:
                     
                 magnitude = tf.norm(var_float).numpy()
                 total_magnitude += magnitude
+                var_count += 1
+            
+            # Debug logging
+            if global_step % 50 == 0:
+                print(f"  Optimizer state magnitude at step {global_step}: {total_magnitude:.6f} from {var_count} variables")
             
             return total_magnitude
         
         def get_detailed_optimizer_state():
             """Get detailed optimizer state information per variable and slot type."""
             detailed_state = {}
+            slots_found = 0
             
             # Dynamically discover slot names by trying common ones
             possible_slot_names = [
@@ -426,10 +433,13 @@ class SequentialOptimizerExperiment:
             ]
             
             # For standard Keras optimizers, we need to access slots
-            if hasattr(model.optimizer, '_variables'):
+            if hasattr(model.optimizer, 'get_slot'):
                 # Get all trainable variables
-                for var in model.trainable_variables:
+                for var_idx, var in enumerate(model.trainable_variables[:10]):  # Limit to first 10 vars for efficiency
                     var_name = var.name.replace(':0', '')  # Clean variable name
+                    # Shorten long variable names for readability
+                    if len(var_name) > 50:
+                        var_name = f"var_{var_idx}_{var_name[:20]}...{var_name[-20:]}"
                     detailed_state[var_name] = {}
                     
                     # Try each possible slot name
@@ -444,7 +454,8 @@ class SequentialOptimizerExperiment:
                                     slot_float = slot
                                 magnitude = tf.norm(slot_float).numpy()
                                 detailed_state[var_name][slot_name] = float(magnitude)
-                        except:
+                                slots_found += 1
+                        except Exception as e:
                             # Slot doesn't exist for this optimizer
                             pass
             
@@ -454,6 +465,16 @@ class SequentialOptimizerExperiment:
                     if 'iteration' in var.name.lower() or 'step' in var.name.lower():
                         detailed_state['_iteration'] = int(var.numpy())
                         break
+            
+            # Debug logging periodically
+            if global_step % 100 == 0:
+                print(f"  Detailed state at step {global_step}: {slots_found} slots found for {optimizer_name}")
+                if detailed_state and slots_found > 0:
+                    # Show first variable's slots as example
+                    for var_name, slots in detailed_state.items():
+                        if var_name != '_iteration' and slots:
+                            print(f"    Example - {var_name[:30]}...: {list(slots.keys())}")
+                            break
             
             return detailed_state
         
@@ -646,9 +667,15 @@ class SequentialOptimizerExperiment:
             
             # Track optimizer state magnitude
             if len(model.optimizer.variables()) > 0:
-                history['optimizer_state_magnitudes'].append(get_optimizer_state_magnitude())
+                state_mag = get_optimizer_state_magnitude()
+                history['optimizer_state_magnitudes'].append(state_mag)
                 # Also track detailed state
-                history['detailed_optimizer_states'].append(get_detailed_optimizer_state())
+                detailed = get_detailed_optimizer_state()
+                history['detailed_optimizer_states'].append(detailed)
+            else:
+                # For optimizers without state (like vanilla SGD)
+                history['optimizer_state_magnitudes'].append(0.0)
+                history['detailed_optimizer_states'].append({})
             
             # Progress update
             if global_step % 50 == 0:
@@ -857,6 +884,24 @@ class SequentialOptimizerExperiment:
         all_slot_types = set()
         slot_data = {}  # {optimizer: {slot_type: [magnitudes_over_time]}}
         
+        # Debug: Print what data we have
+        print("\n=== Debugging Optimizer State Data ===")
+        for opt_name, result in optimizer_results.items():
+            if 'history' in result:
+                print(f"\n{opt_name}:")
+                if 'detailed_optimizer_states' in result['history']:
+                    print(f"  - Has detailed_optimizer_states: {len(result['history']['detailed_optimizer_states'])} states")
+                    if result['history']['detailed_optimizer_states']:
+                        first_state = result['history']['detailed_optimizer_states'][0]
+                        print(f"  - First state keys: {list(first_state.keys())[:5]}...")  # Show first 5 keys
+                else:
+                    print(f"  - No detailed_optimizer_states")
+                if 'optimizer_state_magnitudes' in result['history']:
+                    print(f"  - Has optimizer_state_magnitudes: {len(result['history']['optimizer_state_magnitudes'])} values")
+                    if result['history']['optimizer_state_magnitudes']:
+                        first_5 = result['history']['optimizer_state_magnitudes'][:5]
+                        print(f"  - First 5 magnitudes: {first_5}")
+        
         for opt_name, result in optimizer_results.items():
             if 'history' in result and 'detailed_optimizer_states' in result['history']:
                 detailed_states = result['history']['detailed_optimizer_states']
@@ -891,11 +936,17 @@ class SequentialOptimizerExperiment:
         marker_styles = ['o', 's', '^', 'v', 'D', 'p', '*', 'x']
         
         plot_index = 0
+        has_plotted_data = False
+        
+        print("\n=== Plotting Optimizer State Data ===")
+        print(f"Slot types found: {all_slot_types}")
+        print(f"Optimizers with slot data: {list(slot_data.keys())}")
+        
         for i, (opt_name, slots) in enumerate(slot_data.items()):
             result = optimizer_results[opt_name]
             if 'history' in result:
                 for j, (slot_type, magnitudes) in enumerate(slots.items()):
-                    if magnitudes and any(m > 0 for m in magnitudes):
+                    if magnitudes:  # Remove the condition that filters out zero magnitudes
                         steps = result['history']['steps'][:len(magnitudes)]
                         # Use different line styles and markers for different slot types
                         line_style = line_styles[j % len(line_styles)]
@@ -903,6 +954,10 @@ class SequentialOptimizerExperiment:
                         
                         # Create label with optimizer and slot type
                         label = f'{opt_name}-{slot_type}'
+                        
+                        # Check if there's any non-zero data
+                        has_nonzero = any(m > 0 for m in magnitudes)
+                        print(f"  {label}: {len(magnitudes)} points, has_nonzero={has_nonzero}, max={max(magnitudes) if magnitudes else 0:.6f}")
                         
                         # Plot with unique color for each optimizer-slot combination
                         ax4.plot(steps, magnitudes,
@@ -915,26 +970,63 @@ class SequentialOptimizerExperiment:
                                 markevery=max(1, len(steps)//20),  # Show markers sparsely
                                 markersize=4)
                         plot_index += 1
+                        has_plotted_data = True
         
         # If no detailed states, fall back to total magnitude plot
-        if not slot_data:
+        if not has_plotted_data:
+            print("\n=== Falling back to total magnitude plot ===")
             for i, (opt_name, result) in enumerate(optimizer_results.items()):
                 if 'history' in result and 'optimizer_state_magnitudes' in result['history']:
                     history = result['history']
                     if history['optimizer_state_magnitudes']:
                         steps = history['steps'][:len(history['optimizer_state_magnitudes'])]
                         magnitudes = history['optimizer_state_magnitudes']
+                        print(f"{opt_name}: {len(magnitudes)} magnitude values, max={max(magnitudes) if magnitudes else 0:.6f}")
                         ax4.plot(steps, magnitudes,
                                 color=colors[i], label=opt_name,
                                 linewidth=2, alpha=0.8)
+                        has_plotted_data = True
         
-        ax4.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
-        ax4.set_xlabel('Training Step')
-        ax4.set_ylabel('Average State Variable Magnitude')
-        ax4.set_title('Individual Optimizer State Variables Over Time')
-        ax4.legend(loc='best', fontsize=8, ncol=2)  # Multi-column legend for many lines
-        ax4.grid(True, alpha=0.3)
-        ax4.set_yscale('log')  # Log scale often better for magnitudes
+        # Only add injection line if we have data to plot
+        if has_plotted_data:
+            ax4.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
+            ax4.set_xlabel('Training Step')
+            ax4.set_ylabel('Average State Variable Magnitude')
+            ax4.set_title('Individual Optimizer State Variables Over Time')
+            
+            # Set X-axis limits to focus on the injection region
+            if injection_step is not None:
+                # Show from 10 steps before injection to steps_after_injection after
+                ax4.set_xlim(max(0, injection_step - 10), injection_step + self.steps_after_injection + 10)
+            
+            # Try to set appropriate Y-axis scale
+            all_y_values = []
+            for line in ax4.get_lines():
+                y_data = line.get_ydata()
+                if len(y_data) > 0:
+                    all_y_values.extend(y_data)
+            
+            if all_y_values:
+                # Filter out zeros and NaNs for scale calculation
+                valid_values = [v for v in all_y_values if v > 0 and not np.isnan(v)]
+                if valid_values:
+                    y_min = min(valid_values) * 0.5
+                    y_max = max(valid_values) * 2.0
+                    ax4.set_ylim(y_min, y_max)
+                    # Use log scale if range is large
+                    if y_max / y_min > 100:
+                        try:
+                            ax4.set_yscale('log')
+                        except:
+                            pass  # Keep linear scale if log scale fails
+            
+            ax4.legend(loc='best', fontsize=8, ncol=2)  # Multi-column legend for many lines
+            ax4.grid(True, alpha=0.3)
+        else:
+            # If still no data, show a message
+            ax4.text(0.5, 0.5, 'No optimizer state data available\n(Check if optimizers have internal states)',
+                    transform=ax4.transAxes, ha='center', va='center', fontsize=12)
+            ax4.set_title('Individual Optimizer State Variables Over Time')
         
         # Plot 5: Injection details
         ax5.axis('off')
