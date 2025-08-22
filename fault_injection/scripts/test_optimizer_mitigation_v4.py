@@ -805,23 +805,87 @@ class SequentialOptimizerExperiment:
         ax3.grid(True, alpha=0.3, axis='y')
         ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
         
-        # Plot 4: Optimizer State Magnitudes over time
-        for i, (opt_name, result) in enumerate(optimizer_results.items()):
-            if 'history' in result and 'optimizer_state_magnitudes' in result['history']:
-                history = result['history']
-                if history['optimizer_state_magnitudes']:
-                    # Ensure we have matching lengths
-                    steps = history['steps'][:len(history['optimizer_state_magnitudes'])]
-                    magnitudes = history['optimizer_state_magnitudes']
-                    ax4.plot(steps, magnitudes,
-                            color=colors[i], label=opt_name,
-                            linewidth=2, alpha=0.8)
+        # Plot 4: Individual Optimizer State Variables over time
+        # First collect all unique slot types across all optimizers
+        all_slot_types = set()
+        slot_data = {}  # {optimizer: {slot_type: [magnitudes_over_time]}}
+        
+        for opt_name, result in optimizer_results.items():
+            if 'history' in result and 'detailed_optimizer_states' in result['history']:
+                detailed_states = result['history']['detailed_optimizer_states']
+                if detailed_states and len(detailed_states) > 0:
+                    slot_data[opt_name] = {}
+                    
+                    # Find all slot types in this optimizer
+                    for state in detailed_states:
+                        for var_name, slots in state.items():
+                            if var_name != '_iteration' and isinstance(slots, dict):
+                                all_slot_types.update(slots.keys())
+                    
+                    # Aggregate slot magnitudes across all variables for each timestep
+                    for slot_type in all_slot_types:
+                        slot_data[opt_name][slot_type] = []
+                        for state in detailed_states:
+                            total_magnitude = 0.0
+                            count = 0
+                            for var_name, slots in state.items():
+                                if var_name != '_iteration' and isinstance(slots, dict):
+                                    if slot_type in slots:
+                                        total_magnitude += slots[slot_type]
+                                        count += 1
+                            # Store average magnitude for this slot type at this timestep
+                            if count > 0:
+                                slot_data[opt_name][slot_type].append(total_magnitude / count)
+                            else:
+                                slot_data[opt_name][slot_type].append(0.0)
+        
+        # Plot each optimizer-slot combination as a separate line
+        line_styles = ['-', '--', '-.', ':']
+        marker_styles = ['o', 's', '^', 'v', 'D', 'p', '*', 'x']
+        
+        plot_index = 0
+        for i, (opt_name, slots) in enumerate(slot_data.items()):
+            result = optimizer_results[opt_name]
+            if 'history' in result:
+                for j, (slot_type, magnitudes) in enumerate(slots.items()):
+                    if magnitudes and any(m > 0 for m in magnitudes):
+                        steps = result['history']['steps'][:len(magnitudes)]
+                        # Use different line styles and markers for different slot types
+                        line_style = line_styles[j % len(line_styles)]
+                        marker_style = marker_styles[j % len(marker_styles)]
+                        
+                        # Create label with optimizer and slot type
+                        label = f'{opt_name}-{slot_type}'
+                        
+                        # Plot with unique color for each optimizer-slot combination
+                        ax4.plot(steps, magnitudes,
+                                color=colors[i % len(colors)],
+                                label=label,
+                                linewidth=2,
+                                alpha=0.8,
+                                linestyle=line_style,
+                                marker=marker_style,
+                                markevery=max(1, len(steps)//20),  # Show markers sparsely
+                                markersize=4)
+                        plot_index += 1
+        
+        # If no detailed states, fall back to total magnitude plot
+        if not slot_data:
+            for i, (opt_name, result) in enumerate(optimizer_results.items()):
+                if 'history' in result and 'optimizer_state_magnitudes' in result['history']:
+                    history = result['history']
+                    if history['optimizer_state_magnitudes']:
+                        steps = history['steps'][:len(history['optimizer_state_magnitudes'])]
+                        magnitudes = history['optimizer_state_magnitudes']
+                        ax4.plot(steps, magnitudes,
+                                color=colors[i], label=opt_name,
+                                linewidth=2, alpha=0.8)
         
         ax4.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
         ax4.set_xlabel('Training Step')
-        ax4.set_ylabel('Optimizer State Magnitude')
-        ax4.set_title('Optimizer Internal State Magnitude (Momentum/Variance)')
-        ax4.legend(loc='best')
+        ax4.set_ylabel('Average State Variable Magnitude')
+        ax4.set_title('Individual Optimizer State Variables Over Time')
+        ax4.legend(loc='best', fontsize=8, ncol=2)  # Multi-column legend for many lines
         ax4.grid(True, alpha=0.3)
         ax4.set_yscale('log')  # Log scale often better for magnitudes
         

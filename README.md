@@ -21,6 +21,19 @@
   --num-experiments 200 \
   --steps-after-injection 300
 
+./shell_scripts/docker_run.sh optimizer \
+    --model resnet18 \
+    --stage bkwd_inject \
+    --fmodel N16_RD \
+    --learning-rate 0.001 \
+    --min-val 3.6e12 \
+    --max-val 1.2e20 \
+    --seed 43 \
+    --max-global-steps 10000 \
+    --optimizers adam sgd_vanilla \
+    --num-experiments 1 \
+    --steps-after-injection 10
+
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \
   --num-experiments 3 \
