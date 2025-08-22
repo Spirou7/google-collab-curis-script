@@ -424,14 +424,19 @@ class SequentialOptimizerExperiment:
                     var_float = var
                     
                 magnitude = tf.norm(var_float).numpy()
-                total_magnitude += magnitude
-                var_count += 1
+                
+                # Check for inf/nan and skip them
+                if np.isfinite(magnitude):
+                    total_magnitude += magnitude
+                    var_count += 1
+                else:
+                    print(f"    Warning: Found inf/nan in optimizer variable at step {global_step}")
             
             # Debug logging
-            if global_step % 50 == 0:
+            if global_step % 50 == 0 and var_count > 0:
                 print(f"  Optimizer state magnitude at step {global_step}: {total_magnitude:.6f} from {var_count} variables")
             
-            return total_magnitude
+            return total_magnitude if np.isfinite(total_magnitude) else 0.0
         
         def get_detailed_optimizer_state():
             """Get detailed optimizer state information per variable and slot type."""
@@ -466,8 +471,12 @@ class SequentialOptimizerExperiment:
                                 else:
                                     slot_float = slot
                                 magnitude = tf.norm(slot_float).numpy()
-                                detailed_state[var_name][slot_name] = float(magnitude)
-                                slots_found += 1
+                                # Only store finite values
+                                if np.isfinite(magnitude):
+                                    detailed_state[var_name][slot_name] = float(magnitude)
+                                    slots_found += 1
+                                else:
+                                    print(f"      Warning: Found inf/nan in {slot_name} for {var_name[:30]}")
                         except Exception as e:
                             # Slot doesn't exist for this optimizer
                             pass
@@ -482,6 +491,13 @@ class SequentialOptimizerExperiment:
             # Debug logging periodically
             if global_step % 100 == 0:
                 print(f"  Detailed state at step {global_step}: {slots_found} slots found for {optimizer_name}")
+                if slots_found == 0:
+                    # Try to debug why no slots were found
+                    print(f"    Debug: optimizer type = {type(model.optimizer).__name__}")
+                    print(f"    Debug: has get_slot method = {hasattr(model.optimizer, 'get_slot')}")
+                    # Check if it's vanilla SGD with no momentum
+                    if 'sgd' in optimizer_name.lower() and hasattr(model.optimizer, 'momentum'):
+                        print(f"    Debug: SGD momentum = {model.optimizer.momentum}")
                 if detailed_state and slots_found > 0:
                     # Show first variable's slots as example
                     for var_name, slots in detailed_state.items():
@@ -1028,8 +1044,12 @@ class SequentialOptimizerExperiment:
                     if history['optimizer_state_magnitudes']:
                         steps = history['steps'][:len(history['optimizer_state_magnitudes'])]
                         magnitudes = history['optimizer_state_magnitudes']
-                        print(f"{opt_name}: {len(magnitudes)} magnitude values, max={max(magnitudes) if magnitudes else 0:.6f}")
-                        ax4.plot(steps, magnitudes,
+                        # Filter out inf/nan values for display
+                        filtered_magnitudes = [m if np.isfinite(m) else np.nan for m in magnitudes]
+                        finite_mags = [m for m in magnitudes if np.isfinite(m)]
+                        max_val = max(finite_mags) if finite_mags else 0
+                        print(f"{opt_name}: {len(magnitudes)} magnitude values, max={max_val:.6f}, inf_count={sum(1 for m in magnitudes if np.isinf(m))}")
+                        ax4.plot(steps, filtered_magnitudes,
                                 color=colors[i], label=opt_name,
                                 linewidth=2, alpha=0.8)
                         has_plotted_data = True
@@ -1054,18 +1074,24 @@ class SequentialOptimizerExperiment:
                     all_y_values.extend(y_data)
             
             if all_y_values:
-                # Filter out zeros and NaNs for scale calculation
-                valid_values = [v for v in all_y_values if v > 0 and not np.isnan(v)]
+                # Filter out zeros, NaNs, and Infs for scale calculation
+                valid_values = [v for v in all_y_values if v > 0 and np.isfinite(v)]
                 if valid_values:
                     y_min = min(valid_values) * 0.5
                     y_max = max(valid_values) * 2.0
-                    ax4.set_ylim(y_min, y_max)
-                    # Use log scale if range is large
-                    if y_max / y_min > 100:
-                        try:
-                            ax4.set_yscale('log')
-                        except:
-                            pass  # Keep linear scale if log scale fails
+                    
+                    # Ensure y_min and y_max are finite
+                    if np.isfinite(y_min) and np.isfinite(y_max):
+                        ax4.set_ylim(y_min, y_max)
+                        # Use log scale if range is large
+                        if y_max / y_min > 100:
+                            try:
+                                ax4.set_yscale('log')
+                            except:
+                                pass  # Keep linear scale if log scale fails
+                    else:
+                        # Fallback to auto scaling
+                        print("Warning: Could not set y-axis limits due to non-finite values")
             
             ax4.legend(loc='best', fontsize=8, ncol=2)  # Multi-column legend for many lines
             ax4.grid(True, alpha=0.3)
@@ -1201,11 +1227,14 @@ Post-Injection Results:
                             # Plot conv layer magnitudes
                             if 'conv' in plot_data[opt_name][primary_slot]:
                                 mags = plot_data[opt_name][primary_slot]['conv']
-                                if mags and any(m > 0 for m in mags):
-                                    steps = result['history']['steps'][:len(mags)]
-                                    ax6.plot(steps, mags,
-                                            color=colors[i], label=f'{opt_name} ({primary_slot})',
-                                            linewidth=2, alpha=0.8)
+                                # Filter out non-finite values
+                                if mags:
+                                    filtered_mags = [m if np.isfinite(m) else np.nan for m in mags]
+                                    if any(np.isfinite(m) and m > 0 for m in filtered_mags):
+                                        steps = result['history']['steps'][:len(filtered_mags)]
+                                        ax6.plot(steps, filtered_mags,
+                                                color=colors[i], label=f'{opt_name} ({primary_slot})',
+                                                linewidth=2, alpha=0.8)
                     
                     ax6.axvline(x=injection_step, color='red', linestyle='--', alpha=0.7)
                     ax6.set_xlabel('Training Step')
