@@ -81,7 +81,7 @@ class SequentialOptimizerExperiment:
             max_global_steps: Early stopping criterion
             optimizers_to_test: List of optimizer names to compare
             num_experiments: Number of experiments to run
-            steps_after_injection: Maximum steps to continue after injection (stops early if recovery achieved)
+            steps_after_injection: Maximum steps to continue after injection (stops early if 1.25x recovery achieved)
         """
         # Store injection parameters
         self.model = model
@@ -626,12 +626,14 @@ class SequentialOptimizerExperiment:
                             # Update lowest post-injection accuracy
                             lowest_post_injection_accuracy = min(lowest_post_injection_accuracy, current_accuracy)
                     
-                    # Track when accuracy fully recovers
+                    # Track when accuracy fully recovers (needs to reach 1.25x pre-injection accuracy)
                     if steps_to_full_recovery is None and pre_injection_accuracy is not None:
-                        if current_accuracy >= pre_injection_accuracy:
+                        recovery_threshold = pre_injection_accuracy * 1.25
+                        if current_accuracy >= recovery_threshold:
                             steps_to_full_recovery = steps_since_injection
                             record(f"✅ Full recovery achieved after {steps_to_full_recovery} steps\n")
                             record(f"   Pre-injection: {pre_injection_accuracy:.4f}, Current: {current_accuracy:.4f}\n")
+                            record(f"   Recovery threshold (1.25x): {recovery_threshold:.4f}\n")
                             record(f"📊 Stopping early due to full recovery (saved {self.steps_after_injection - steps_since_injection} steps)\n")
                             break  # Exit the training loop early since recovery is achieved
                 
@@ -966,11 +968,11 @@ Post-Injection Results:
                 
                 if steps_to_recovery is not None:
                     if steps_to_recovery == -1:
-                        injection_text += f"\n  Full recovery: >1000 steps"
+                        injection_text += f"\n  Full recovery (1.25x): >1000 steps"
                     else:
-                        injection_text += f"\n  Full recovery: {steps_to_recovery} steps"
+                        injection_text += f"\n  Full recovery (1.25x): {steps_to_recovery} steps"
                 else:
-                    injection_text += f"\n  Full recovery: Not achieved"
+                    injection_text += f"\n  Full recovery (1.25x): Not achieved"
         
         ax5.text(0.1, 0.9, injection_text, transform=ax5.transAxes,
                 fontsize=10, verticalalignment='top', fontfamily='monospace')
@@ -1098,7 +1100,7 @@ Post-Injection Results:
         print(f"{'='*80}")
         print(f"Optimizers to test: {self.optimizers_to_test}")
         print(f"Number of experiments: {self.num_experiments}")
-        print(f"Max steps after injection: {self.steps_after_injection} (stops early on recovery)")
+        print(f"Max steps after injection: {self.steps_after_injection} (stops early on 1.25x recovery)")
         print(f"Results directory: {self.results_base_dir}")
         
         all_results = []
@@ -1249,7 +1251,7 @@ def main():
     parser.add_argument('--num-experiments', type=int, default=10,
                        help='Number of experiments to run (default: 10)')
     parser.add_argument('--steps-after-injection', type=int, default=100,
-                       help='Maximum steps to train after injection, stops early if accuracy recovers (default: 100)')
+                       help='Maximum steps to train after injection, stops early if accuracy reaches 1.25x pre-injection level (default: 100)')
     
     args = parser.parse_args()
     
@@ -1310,11 +1312,11 @@ def main():
                     
                     if steps_to_recovery is not None:
                         if steps_to_recovery == -1:
-                            print(f"    • Steps to full recovery: >1000 (limit reached)")
+                            print(f"    • Steps to full recovery (1.25x): >1000 (limit reached)")
                         else:
-                            print(f"    • Steps to full recovery: {steps_to_recovery}")
+                            print(f"    • Steps to full recovery (1.25x): {steps_to_recovery}")
                     else:
-                        print(f"    • Steps to full recovery: Not achieved")
+                        print(f"    • Steps to full recovery (1.25x): Not achieved")
                     
                     if lowest_acc is not None:
                         print(f"    • Lowest post-injection accuracy: {lowest_acc:.4f}")
@@ -1338,10 +1340,10 @@ def main():
             print(f"  • Max steps to accuracy increase: {max(all_increase_steps)}")
         
         if all_recovery_steps:
-            print(f"  • Avg steps to full recovery: {np.mean(all_recovery_steps):.1f}")
-            print(f"  • Min steps to full recovery: {min(all_recovery_steps)}")
-            print(f"  • Max steps to full recovery: {max(all_recovery_steps)}")
-            print(f"  • Recovery rate: {len(all_recovery_steps)}/{sum(len(exp) for exp in results)} ({100*len(all_recovery_steps)/sum(len(exp) for exp in results):.1f}%)")
+            print(f"  • Avg steps to full recovery (1.25x): {np.mean(all_recovery_steps):.1f}")
+            print(f"  • Min steps to full recovery (1.25x): {min(all_recovery_steps)}")
+            print(f"  • Max steps to full recovery (1.25x): {max(all_recovery_steps)}")
+            print(f"  • Recovery rate (1.25x): {len(all_recovery_steps)}/{sum(len(exp) for exp in results)} ({100*len(all_recovery_steps)/sum(len(exp) for exp in results):.1f}%)")
         
         print(f"{'='*80}")
 
