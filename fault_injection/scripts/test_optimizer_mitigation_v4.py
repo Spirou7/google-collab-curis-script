@@ -309,9 +309,13 @@ class SequentialOptimizerExperiment:
             gradients = tape.gradient(avg_loss, tvars)
             model.optimizer.apply_gradients(grads_and_vars=list(zip(gradients, tvars)))
             
+            # Calculate single-step accuracy
+            correct_predictions = tf.equal(tf.argmax(predictions, axis=1), tf.cast(labels, tf.int64))
+            step_accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32))
+            
             train_loss.update_state(avg_loss)
             train_accuracy.update_state(labels, predictions)
-            return avg_loss
+            return avg_loss, step_accuracy
         
         @tf.function
         def fwrd_inj_train_step1(iter_inputs, inj_layer):
@@ -337,9 +341,13 @@ class SequentialOptimizerExperiment:
             gradients = manual_gradients + golden_gradients[golden_grad_idx[injection_params['model']]:]
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
             
+            # Calculate single-step accuracy
+            correct_predictions = tf.equal(tf.argmax(predictions, axis=1), tf.cast(labels, tf.int64))
+            step_accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32)).numpy()
+            
             train_loss.update_state(avg_loss)
             train_accuracy.update_state(labels, predictions)
-            return avg_loss, l_outputs
+            return avg_loss, l_outputs, step_accuracy
         
         def bkwd_inj_train_step1(iter_inputs, inj_layer):
             images, labels = iter_inputs
@@ -371,9 +379,13 @@ class SequentialOptimizerExperiment:
             gradients = manual_gradients + golden_gradients[golden_grad_idx[injection_params['model']]:]
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
             
+            # Calculate single-step accuracy
+            correct_predictions = tf.equal(tf.argmax(predictions, axis=1), tf.cast(labels, tf.int64))
+            step_accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32)).numpy()
+            
             train_loss.update_state(avg_loss)
             train_accuracy.update_state(labels, predictions)
-            return avg_loss, l_outputs
+            return avg_loss, l_outputs, step_accuracy
         
         # Training loop
         steps_per_epoch = math.ceil(train_count / config.BATCH_SIZE)
@@ -387,7 +399,8 @@ class SequentialOptimizerExperiment:
         # History tracking
         history = {
             'steps': [],
-            'accuracy': [],
+            'accuracy': [],  # Running average accuracy
+            'step_accuracy': [],  # Single-step accuracy (instantaneous)
             'loss': [],
             'optimizer_state_magnitudes': [],  # Track optimizer state magnitudes
             'detailed_optimizer_states': []  # Track detailed per-variable, per-slot states
@@ -516,8 +529,11 @@ class SequentialOptimizerExperiment:
                 train_iterator = iter(train_dataset)
             
             if global_step == injection_global_step:
-                # Store pre-injection accuracy
-                pre_injection_accuracy = float(train_accuracy.result())
+                # Store pre-injection accuracy (use last single-step accuracy)
+                if history['step_accuracy']:
+                    pre_injection_accuracy = history['step_accuracy'][-1]
+                else:
+                    pre_injection_accuracy = float(train_accuracy.result())
                 
                 # Perform injection
                 record(f"\n🎯 Performing injection at step {global_step}\n")
@@ -597,21 +613,23 @@ class SequentialOptimizerExperiment:
                 
                 # Perform injection
                 if 'fwrd' in injection_params['stage']:
-                    losses, injected_layer_outputs = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                    losses, injected_layer_outputs, injection_step_accuracy = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
                 else:
-                    losses, injected_layer_outputs = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                    losses, injected_layer_outputs, injection_step_accuracy = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
                 
                 # Check for NaN/Inf after injection
                 for var in model.trainable_variables:
                     nan_weights += tf.reduce_sum(tf.cast(tf.math.is_nan(var), tf.int32)).numpy()
                     inf_weights += tf.reduce_sum(tf.cast(tf.math.is_inf(var), tf.int32)).numpy()
                 
-                post_injection_accuracy = float(train_accuracy.result())
+                # Use single-step accuracy for injection measurement
+                post_injection_accuracy = injection_step_accuracy
                 post_injection_loss = float(train_loss.result())
                 lowest_post_injection_accuracy = post_injection_accuracy
                 
-                record(f"Post-injection: accuracy={post_injection_accuracy:.4f}, "
+                record(f"Post-injection single-step: accuracy={post_injection_accuracy:.4f}, "
                       f"loss={post_injection_loss:.4f}, NaN={nan_weights}, Inf={inf_weights}\n")
+                record(f"Running average accuracy: {float(train_accuracy.result()):.4f}\n")
                 
                 injection_performed = True
                 
@@ -623,13 +641,30 @@ class SequentialOptimizerExperiment:
                     train_iterator = iter(train_dataset)
                     batch_data = next(train_iterator)
                 
-                losses = train_step(batch_data)
+                losses, step_acc = train_step(batch_data)
             
             # Record metrics
             history['steps'].append(global_step)
-            current_accuracy = float(train_accuracy.result())
-            history['accuracy'].append(current_accuracy)
+            # Record running average accuracy
+            history['accuracy'].append(float(train_accuracy.result()))
             history['loss'].append(float(train_loss.result()))
+            
+            # Record single-step accuracy
+            if injection_performed and global_step == injection_global_step:
+                # Use the injection step accuracy we already calculated
+                current_step_accuracy = injection_step_accuracy
+            elif not injection_performed or global_step != injection_global_step:
+                # Use the step accuracy from normal training
+                if 'step_acc' in locals():
+                    current_step_accuracy = float(step_acc)
+                else:
+                    # Fallback for steps before we have step_acc
+                    current_step_accuracy = float(train_accuracy.result())
+            
+            history['step_accuracy'].append(current_step_accuracy)
+            
+            # Use single-step accuracy for recovery tracking
+            current_accuracy = current_step_accuracy
             
             # Track recovery after injection
             if injection_performed and global_step > injection_global_step:
@@ -688,14 +723,19 @@ class SequentialOptimizerExperiment:
         # Close log file
         train_recorder.close()
         
-        # Calculate recovery metrics
-        pre_injection_acc = history['accuracy'][injection_global_step - 1] if injection_global_step > 0 else 0
-        final_acc = history['accuracy'][-1] if history['accuracy'] else 0
+        # Calculate recovery metrics using single-step accuracy if available
+        if 'step_accuracy' in history and history['step_accuracy']:
+            pre_injection_acc = history['step_accuracy'][injection_global_step - 1] if injection_global_step > 0 else 0
+            final_acc = history['step_accuracy'][-1]
+        else:
+            pre_injection_acc = history['accuracy'][injection_global_step - 1] if injection_global_step > 0 else 0
+            final_acc = history['accuracy'][-1] if history['accuracy'] else 0
         
-        # Calculate degradation rate
-        if len(history['accuracy']) > injection_global_step + 10:
+        # Calculate degradation rate using single-step accuracy if available
+        accuracy_for_rate = history['step_accuracy'] if 'step_accuracy' in history and history['step_accuracy'] else history['accuracy']
+        if len(accuracy_for_rate) > injection_global_step + 10:
             recovery_steps = history['steps'][injection_global_step + 1:]
-            recovery_acc = history['accuracy'][injection_global_step + 1:]
+            recovery_acc = accuracy_for_rate[injection_global_step + 1:]
             if len(recovery_steps) > 1:
                 z = np.polyfit(recovery_steps, recovery_acc, 1)
                 degradation_rate = float(z[0])
@@ -821,18 +861,25 @@ class SequentialOptimizerExperiment:
             steps_per_epoch = math.ceil(50000 / config.BATCH_SIZE)
             injection_step = injection_params['target_epoch'] * steps_per_epoch + injection_params['target_step']
         
-        # Plot 1: Accuracy over time
+        # Plot 1: Accuracy over time (single-step accuracy if available, else running average)
         for i, (opt_name, result) in enumerate(optimizer_results.items()):
             if 'history' in result:
                 history = result['history']
-                ax1.plot(history['steps'], history['accuracy'],
-                        color=colors[i], label=f'{opt_name} (final: {result.get("final_accuracy", 0):.3f})',
-                        linewidth=2, alpha=0.8)
+                # Prefer single-step accuracy if available
+                if 'step_accuracy' in history and history['step_accuracy']:
+                    ax1.plot(history['steps'], history['step_accuracy'],
+                            color=colors[i], label=f'{opt_name} (final: {history["step_accuracy"][-1]:.3f})',
+                            linewidth=2, alpha=0.8)
+                else:
+                    # Fallback to running average
+                    ax1.plot(history['steps'], history['accuracy'],
+                            color=colors[i], label=f'{opt_name} (final: {result.get("final_accuracy", 0):.3f})',
+                            linewidth=2, alpha=0.8)
         
         ax1.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
         ax1.set_xlabel('Training Step')
-        ax1.set_ylabel('Training Accuracy')
-        ax1.set_title('Accuracy During Training and Recovery')
+        ax1.set_ylabel('Single-Step Accuracy')
+        ax1.set_title('Instantaneous Accuracy During Training and Recovery')
         ax1.legend(loc='best')
         ax1.grid(True, alpha=0.3)
         
