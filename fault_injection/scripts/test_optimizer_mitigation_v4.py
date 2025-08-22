@@ -418,6 +418,13 @@ class SequentialOptimizerExperiment:
             """Get detailed optimizer state information per variable and slot type."""
             detailed_state = {}
             
+            # Dynamically discover slot names by trying common ones
+            possible_slot_names = [
+                'momentum', 'accumulator', 'rms', 'm', 'v', 
+                'velocity', 'vhat', 'delta_accumulator',
+                'linear', 'gradient_accumulator'
+            ]
+            
             # For standard Keras optimizers, we need to access slots
             if hasattr(model.optimizer, '_variables'):
                 # Get all trainable variables
@@ -425,23 +432,8 @@ class SequentialOptimizerExperiment:
                     var_name = var.name.replace(':0', '')  # Clean variable name
                     detailed_state[var_name] = {}
                     
-                    # Check for common slot names based on optimizer type
-                    slot_names = []
-                    opt_name_lower = optimizer_name.lower()
-                    
-                    if 'sgd' in opt_name_lower:
-                        slot_names = ['momentum']
-                    elif 'adam' in opt_name_lower or 'nadam' in opt_name_lower:
-                        slot_names = ['m', 'v']  # First and second moments
-                    elif 'rmsprop' in opt_name_lower:
-                        slot_names = ['rms', 'momentum']
-                    elif 'adagrad' in opt_name_lower:
-                        slot_names = ['accumulator']
-                    elif 'adadelta' in opt_name_lower:
-                        slot_names = ['accumulator', 'delta_accumulator']
-                    
-                    # Try to get each slot
-                    for slot_name in slot_names:
+                    # Try each possible slot name
+                    for slot_name in possible_slot_names:
                         try:
                             slot = model.optimizer.get_slot(var, slot_name)
                             if slot is not None:

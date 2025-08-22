@@ -23,10 +23,41 @@ services:
     #           count: 1
     #           capabilities: [gpu]
     command: >
-      python fault_injection/scripts/test_optimizer_mitigation_v3.py
+      python fault_injection/scripts/test_optimizer_mitigation_v4.py
       --num-experiments 1
       --steps-after-injection 10
-      --optimizers adam sgd
+      --optimizers adam sgd sgd_vanilla
+    stdin_open: true
+    tty: true
+  
+  # Service to discover optimizer slot names
+  discover-slots:
+    build: .
+    image: curis-optimizer:latest
+    container_name: discover_slots
+    volumes:
+      - fault_injection_output:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TF_CPP_MIN_LOG_LEVEL=2
+    command: python fault_injection/scripts/discover_optimizer_slots.py
+    stdin_open: true
+    tty: true
+  
+  # Service to analyze optimizer states from results
+  analyze-states:
+    build: .
+    image: curis-optimizer:latest
+    container_name: analyze_states
+    volumes:
+      - fault_injection_optimizer:/app/fault_injection/optimizer_comparison_results
+      - fault_injection_output:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TF_CPP_MIN_LOG_LEVEL=2
+    command: >
+      bash -c "latest_dir=\$(ls -td fault_injection/optimizer_comparison_results/experiment_* | head -1) &&
+               python fault_injection/scripts/analyze_optimizer_states.py \$latest_dir -o output/state_analysis"
     stdin_open: true
     tty: true
 
