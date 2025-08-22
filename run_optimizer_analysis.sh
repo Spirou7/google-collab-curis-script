@@ -6,6 +6,17 @@ echo "=================================================="
 echo "OPTIMIZER STATE ANALYSIS TOOL"
 echo "=================================================="
 
+# Check if docker-compose is available, otherwise use docker
+if command -v docker-compose &> /dev/null; then
+    DOCKER_CMD="docker-compose"
+    USE_COMPOSE=true
+else
+    DOCKER_CMD="docker"
+    USE_COMPOSE=false
+    echo "Note: docker-compose not found, using docker directly"
+    echo ""
+fi
+
 # Function to print usage
 usage() {
     echo "Usage: $0 [command]"
@@ -61,11 +72,33 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Helper function to run docker commands
+run_docker() {
+    if [ "$USE_COMPOSE" = true ]; then
+        docker-compose run --rm "$@"
+    else
+        # Build image if needed
+        if ! docker images | grep -q "curis-optimizer"; then
+            echo "Building Docker image..."
+            docker build -t curis-optimizer:latest .
+        fi
+        
+        # Run with docker directly
+        docker run --rm \
+            -v "$(pwd):/app" \
+            -w /app \
+            -e PYTHONUNBUFFERED=1 \
+            -e TF_CPP_MIN_LOG_LEVEL=2 \
+            curis-optimizer:latest \
+            "$@"
+    fi
+}
+
 # Execute command
 case $COMMAND in
     discover)
         echo "Discovering optimizer slot names..."
-        docker-compose run --rm discover-slots
+        run_docker python fault_injection/scripts/discover_optimizer_slots.py
         ;;
     
     experiment)
@@ -74,8 +107,7 @@ case $COMMAND in
         echo "Experiments: $NUM_EXPERIMENTS"
         echo "Steps after injection: $STEPS_AFTER"
         
-        docker-compose run --rm optimizer-experiment \
-            python fault_injection/scripts/test_optimizer_mitigation_v4.py \
+        run_docker python fault_injection/scripts/test_optimizer_mitigation_v4.py \
             --num-experiments $NUM_EXPERIMENTS \
             --steps-after-injection $STEPS_AFTER \
             --optimizers $OPTIMIZERS
@@ -83,11 +115,21 @@ case $COMMAND in
     
     analyze)
         echo "Analyzing optimizer states from latest experiment..."
-        docker-compose run --rm analyze-states
+        if [ "$USE_COMPOSE" = true ]; then
+            docker-compose run --rm analyze-states
+        else
+            # Find latest experiment directory
+            LATEST_DIR=$(ls -td fault_injection/optimizer_comparison_results/experiment_* 2>/dev/null | head -1)
+            if [ -z "$LATEST_DIR" ]; then
+                echo "No experiment results found!"
+                exit 1
+            fi
+            echo "Analyzing: $LATEST_DIR"
+            run_docker python fault_injection/scripts/analyze_optimizer_states.py \
+                "$LATEST_DIR" -o output/state_analysis
+        fi
         echo ""
         echo "Results saved to output/state_analysis/"
-        echo "To view results locally, copy them from Docker volume:"
-        echo "  docker cp \$(docker-compose ps -q analyze-states):/app/output/state_analysis ./state_analysis"
         ;;
     
     full)
@@ -96,13 +138,12 @@ case $COMMAND in
         # Step 1: Discover slots
         echo ""
         echo "Step 1/3: Discovering optimizer slots..."
-        docker-compose run --rm discover-slots
+        run_docker python fault_injection/scripts/discover_optimizer_slots.py
         
         # Step 2: Run experiment
         echo ""
         echo "Step 2/3: Running experiment..."
-        docker-compose run --rm optimizer-experiment \
-            python fault_injection/scripts/test_optimizer_mitigation_v4.py \
+        run_docker python fault_injection/scripts/test_optimizer_mitigation_v4.py \
             --num-experiments $NUM_EXPERIMENTS \
             --steps-after-injection $STEPS_AFTER \
             --optimizers $OPTIMIZERS
@@ -110,12 +151,21 @@ case $COMMAND in
         # Step 3: Analyze results
         echo ""
         echo "Step 3/3: Analyzing results..."
-        docker-compose run --rm analyze-states
+        if [ "$USE_COMPOSE" = true ]; then
+            docker-compose run --rm analyze-states
+        else
+            LATEST_DIR=$(ls -td fault_injection/optimizer_comparison_results/experiment_* 2>/dev/null | head -1)
+            if [ -n "$LATEST_DIR" ]; then
+                echo "Analyzing: $LATEST_DIR"
+                run_docker python fault_injection/scripts/analyze_optimizer_states.py \
+                    "$LATEST_DIR" -o output/state_analysis
+            fi
+        fi
         
         echo ""
         echo "=================================================="
         echo "Full pipeline complete!"
-        echo "Results saved in Docker volumes"
+        echo "Results saved in output/"
         echo "=================================================="
         ;;
     
