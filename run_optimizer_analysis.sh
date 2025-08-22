@@ -77,13 +77,25 @@ run_docker() {
     if [ "$USE_COMPOSE" = true ]; then
         docker-compose run --rm "$@"
     else
-        # Build image if needed
+        # Check if the custom image exists, if not build it
         if ! docker images | grep -q "curis-optimizer"; then
-            echo "Building Docker image..."
-            docker build -t curis-optimizer:latest .
+            echo "Docker image 'curis-optimizer' not found. Building it now..."
+            echo "This may take a few minutes on first run..."
+            docker build -t curis-optimizer:latest . || {
+                echo "Failed to build Docker image. Trying with tensorflow base image directly..."
+                # If build fails, use TensorFlow image directly
+                docker run --rm \
+                    -v "$(pwd):/app" \
+                    -w /app \
+                    -e PYTHONUNBUFFERED=1 \
+                    -e TF_CPP_MIN_LOG_LEVEL=2 \
+                    tensorflow/tensorflow:2.13.0-gpu \
+                    "$@"
+                return
+            }
         fi
         
-        # Run with docker directly
+        # Run with docker directly using our custom image
         docker run --rm \
             -v "$(pwd):/app" \
             -w /app \
