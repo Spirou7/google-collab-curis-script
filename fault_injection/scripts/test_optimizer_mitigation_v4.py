@@ -99,7 +99,7 @@ class SequentialOptimizerExperiment:
         self.max_global_steps = max_global_steps
         
         # Optimizer comparison parameters
-        self.optimizers_to_test = optimizers_to_test or ['adam', 'sgd', 'rmsprop', 'adamw']
+        self.optimizers_to_test = optimizers_to_test or ['adam', 'sgd', 'sgd_vanilla', 'rmsprop', 'adamw']
         self.num_experiments = num_experiments
         self.steps_after_injection = steps_after_injection
         
@@ -218,6 +218,7 @@ class SequentialOptimizerExperiment:
         optimizer_map = {
             'adam': tf.keras.optimizers.Adam,
             'sgd': tf.keras.optimizers.SGD,
+            'sgd_vanilla': tf.keras.optimizers.SGD,  # Same class, different config
             'rmsprop': tf.keras.optimizers.RMSprop,
             'adamw': tf.keras.optimizers.Adam,  # Will try to use AdamW if available
             'adagrad': tf.keras.optimizers.Adagrad,
@@ -242,6 +243,9 @@ class SequentialOptimizerExperiment:
         # Create optimizer with appropriate parameters
         if optimizer_name.lower() == 'sgd':
             return optimizer_class(learning_rate=lr_schedule, momentum=0.9)
+        elif optimizer_name.lower() == 'sgd_vanilla':
+            # Vanilla SGD with NO momentum (stateless)
+            return optimizer_class(learning_rate=lr_schedule, momentum=0.0)
         elif optimizer_name.lower() == 'rmsprop':
             return optimizer_class(learning_rate=lr_schedule, rho=0.9)
         elif optimizer_name.lower() == 'adadelta':
@@ -385,7 +389,8 @@ class SequentialOptimizerExperiment:
             'steps': [],
             'accuracy': [],
             'loss': [],
-            'optimizer_state_magnitudes': []  # Track optimizer state magnitudes
+            'optimizer_state_magnitudes': [],  # Track optimizer state magnitudes
+            'detailed_optimizer_states': []  # Track detailed per-variable, per-slot states
         }
         
         def get_optimizer_state_magnitude():
@@ -408,6 +413,57 @@ class SequentialOptimizerExperiment:
                 total_magnitude += magnitude
             
             return total_magnitude
+        
+        def get_detailed_optimizer_state():
+            """Get detailed optimizer state information per variable and slot type."""
+            detailed_state = {}
+            
+            # For standard Keras optimizers, we need to access slots
+            if hasattr(model.optimizer, '_variables'):
+                # Get all trainable variables
+                for var in model.trainable_variables:
+                    var_name = var.name.replace(':0', '')  # Clean variable name
+                    detailed_state[var_name] = {}
+                    
+                    # Check for common slot names based on optimizer type
+                    slot_names = []
+                    opt_name_lower = optimizer_name.lower()
+                    
+                    if 'sgd' in opt_name_lower:
+                        slot_names = ['momentum']
+                    elif 'adam' in opt_name_lower or 'nadam' in opt_name_lower:
+                        slot_names = ['m', 'v']  # First and second moments
+                    elif 'rmsprop' in opt_name_lower:
+                        slot_names = ['rms', 'momentum']
+                    elif 'adagrad' in opt_name_lower:
+                        slot_names = ['accumulator']
+                    elif 'adadelta' in opt_name_lower:
+                        slot_names = ['accumulator', 'delta_accumulator']
+                    
+                    # Try to get each slot
+                    for slot_name in slot_names:
+                        try:
+                            slot = model.optimizer.get_slot(var, slot_name)
+                            if slot is not None:
+                                # Calculate norm of the slot variable
+                                if slot.dtype != tf.float32:
+                                    slot_float = tf.cast(slot, tf.float32)
+                                else:
+                                    slot_float = slot
+                                magnitude = tf.norm(slot_float).numpy()
+                                detailed_state[var_name][slot_name] = float(magnitude)
+                        except:
+                            # Slot doesn't exist for this optimizer
+                            pass
+            
+            # Also track iteration count
+            for var in model.optimizer.variables():
+                if var.dtype in [tf.int32, tf.int64]:
+                    if 'iteration' in var.name.lower() or 'step' in var.name.lower():
+                        detailed_state['_iteration'] = int(var.numpy())
+                        break
+            
+            return detailed_state
         
         # Train until injection point
         train_iterator = iter(train_dataset)
@@ -557,6 +613,8 @@ class SequentialOptimizerExperiment:
             # Track optimizer state magnitude
             if len(model.optimizer.variables()) > 0:
                 history['optimizer_state_magnitudes'].append(get_optimizer_state_magnitude())
+                # Also track detailed state
+                history['detailed_optimizer_states'].append(get_detailed_optimizer_state())
             
             # Progress update
             if global_step % 50 == 0:
@@ -799,8 +857,116 @@ Post-Injection Results:
         ax5.text(0.1, 0.9, injection_text, transform=ax5.transAxes,
                 fontsize=10, verticalalignment='top', fontfamily='monospace')
         
-        # Plot 6: Empty or additional analysis
-        ax6.axis('off')
+        # Plot 6: Detailed state tracking (per-variable, per-slot)
+        # Analyze detailed states to find which slots and variables to plot
+        slot_types_found = set()
+        variable_groups = {}  # Group variables by layer type
+        
+        for opt_name, result in optimizer_results.items():
+            if 'history' in result and 'detailed_optimizer_states' in result['history']:
+                detailed_states = result['history']['detailed_optimizer_states']
+                if detailed_states and len(detailed_states) > 0:
+                    # Analyze first state to understand structure
+                    first_state = detailed_states[0]
+                    for var_name, slots in first_state.items():
+                        if var_name != '_iteration' and isinstance(slots, dict):
+                            # Group variables by layer type (conv, dense, etc)
+                            if 'conv' in var_name.lower():
+                                group = 'conv'
+                            elif 'dense' in var_name.lower() or 'fc' in var_name.lower():
+                                group = 'dense'
+                            elif 'batch' in var_name.lower() or 'bn' in var_name.lower():
+                                group = 'batchnorm'
+                            else:
+                                group = 'other'
+                            
+                            if group not in variable_groups:
+                                variable_groups[group] = set()
+                            variable_groups[group].add(var_name)
+                            
+                            # Track slot types
+                            slot_types_found.update(slots.keys())
+        
+        # Plot aggregated state magnitudes by layer type and slot type
+        if slot_types_found and variable_groups:
+            # Prepare data for plotting
+            plot_data = {}  # {optimizer: {slot_type: {layer_group: [magnitudes]}}}
+            
+            for opt_name, result in optimizer_results.items():
+                if 'history' in result and 'detailed_optimizer_states' in result['history']:
+                    detailed_states = result['history']['detailed_optimizer_states']
+                    steps = result['history']['steps'][:len(detailed_states)]
+                    
+                    plot_data[opt_name] = {}
+                    for slot_type in slot_types_found:
+                        plot_data[opt_name][slot_type] = {group: [] for group in variable_groups}
+                        
+                        for state in detailed_states:
+                            # Aggregate magnitudes by group
+                            group_mags = {group: 0.0 for group in variable_groups}
+                            group_counts = {group: 0 for group in variable_groups}
+                            
+                            for var_name, slots in state.items():
+                                if var_name != '_iteration' and isinstance(slots, dict):
+                                    # Determine group
+                                    if 'conv' in var_name.lower():
+                                        group = 'conv'
+                                    elif 'dense' in var_name.lower() or 'fc' in var_name.lower():
+                                        group = 'dense'
+                                    elif 'batch' in var_name.lower() or 'bn' in var_name.lower():
+                                        group = 'batchnorm'
+                                    else:
+                                        group = 'other'
+                                    
+                                    if slot_type in slots:
+                                        group_mags[group] += slots[slot_type]
+                                        group_counts[group] += 1
+                            
+                            # Store averaged magnitudes
+                            for group in variable_groups:
+                                if group_counts[group] > 0:
+                                    plot_data[opt_name][slot_type][group].append(
+                                        group_mags[group] / group_counts[group]
+                                    )
+                                else:
+                                    plot_data[opt_name][slot_type][group].append(0.0)
+            
+            # Create stacked plot showing slot types
+            slot_list = sorted(list(slot_types_found))
+            if len(slot_list) > 0:
+                # Plot first slot type (usually momentum or m)
+                primary_slot = slot_list[0] if slot_list else None
+                if primary_slot:
+                    for i, opt_name in enumerate(optimizer_results.keys()):
+                        if opt_name in plot_data and primary_slot in plot_data[opt_name]:
+                            # Plot conv layer magnitudes
+                            if 'conv' in plot_data[opt_name][primary_slot]:
+                                mags = plot_data[opt_name][primary_slot]['conv']
+                                if mags and any(m > 0 for m in mags):
+                                    steps = result['history']['steps'][:len(mags)]
+                                    ax6.plot(steps, mags,
+                                            color=colors[i], label=f'{opt_name} ({primary_slot})',
+                                            linewidth=2, alpha=0.8)
+                    
+                    ax6.axvline(x=injection_step, color='red', linestyle='--', alpha=0.7)
+                    ax6.set_xlabel('Training Step')
+                    ax6.set_ylabel(f'Average {primary_slot} Magnitude')
+                    ax6.set_title(f'Detailed State: {primary_slot} in Conv Layers')
+                    ax6.legend(loc='best')
+                    ax6.grid(True, alpha=0.3)
+                    ax6.set_yscale('log')
+                else:
+                    ax6.axis('off')
+                    ax6.text(0.5, 0.5, 'No optimizer state slots found\n(SGD_vanilla has no internal state)',
+                            transform=ax6.transAxes, ha='center', va='center', fontsize=12)
+            else:
+                ax6.axis('off')
+                ax6.text(0.5, 0.5, 'No detailed state data available', 
+                        transform=ax6.transAxes, ha='center', va='center')
+        else:
+            ax6.axis('off')
+            ax6.text(0.5, 0.5, 'No detailed optimizer state tracking available',
+                    transform=ax6.transAxes, ha='center', va='center')
         
         plt.tight_layout()
         plot_path = os.path.join(experiment_dir, 'comparison_plots.png')

@@ -13,13 +13,13 @@
   --stage bkwd_inject \
   --fmodel N16_RD \
   --learning-rate 0.001 \
-  --min-val 3.6e6 \
-  --max-val 1.2e10 \
-  --seed 42 \
+  --min-val 3.6e12 \
+  --max-val 1.2e20 \
+  --seed 43 \
   --max-global-steps 10000 \
   --optimizers adam sgd \
   --num-experiments 200 \
-  --steps-after-injection 100
+  --steps-after-injection 300
 
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \
