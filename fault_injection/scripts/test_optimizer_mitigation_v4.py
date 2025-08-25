@@ -559,10 +559,6 @@ class SequentialOptimizerExperiment:
                 # CRITICAL: Reset metrics at each step (matching gold standard lines 270-271)
                 train_loss.reset_states()
                 train_accuracy.reset_states()
-                
-                # Log current position
-                if global_step % 50 == 0:
-                    print(f"Epoch {epoch}/{total_epochs_needed}, Step {step}/{steps_per_epoch}, Global step {global_step}")
             
                 if global_step == injection_global_step:
                     # Store pre-injection accuracy
@@ -740,10 +736,9 @@ class SequentialOptimizerExperiment:
                     history['optimizer_state_magnitudes'].append(0.0)
                     history['detailed_optimizer_states'].append({})
                 
-                # Progress update (report the per-step metrics)
-                if global_step % 50 == 0:
-                    record(f"Epoch {epoch}, Step {step}/{steps_per_epoch}: "
-                          f"accuracy={current_accuracy:.4f}, loss={current_loss:.4f}\n")
+                # Progress update - log EVERY step (matching gold standard lines 292-297)
+                record(f"Epoch: {epoch}/{total_epochs_needed}, step: {step}/{steps_per_epoch}, "
+                      f"loss: {current_loss:.5f}, accuracy: {current_accuracy:.5f}\n")
                 
                 # Check for NaN termination (matching gold standard)
                 if not np.isfinite(current_loss):
