@@ -59,6 +59,7 @@ class SequentialOptimizerExperiment:
                  target_layer=None, target_epoch=None, target_step=None,
                  learning_rate=None, inj_pos=None, inj_values=None,
                  min_val=None, max_val=None, seed=None, max_global_steps=None,
+                 min_epoch=None, max_epoch=None,
                  # Optimizer comparison parameters
                  optimizers_to_test=None, num_experiments=10,
                  steps_after_injection=100):
@@ -79,6 +80,8 @@ class SequentialOptimizerExperiment:
             max_val: Max injection value for range
             seed: Random seed
             max_global_steps: Early stopping criterion
+            min_epoch: Minimum epoch for random selection (default: 0)
+            max_epoch: Maximum epoch for random selection (default: 10)
             optimizers_to_test: List of optimizer names to compare
             num_experiments: Number of experiments to run
             steps_after_injection: Maximum steps to continue after injection (stops early if 1.25x recovery achieved)
@@ -97,6 +100,8 @@ class SequentialOptimizerExperiment:
         self.max_val = max_val
         self.seed = seed if seed is not None else 42
         self.max_global_steps = max_global_steps
+        self.min_epoch = min_epoch if min_epoch is not None else 0
+        self.max_epoch = max_epoch if max_epoch is not None else 10
         
         # Optimizer comparison parameters
         self.optimizers_to_test = optimizers_to_test or ['adam', 'sgd', 'sgd_vanilla', 'rmsprop', 'adamw']
@@ -148,7 +153,7 @@ class SequentialOptimizerExperiment:
             'stage': self.stage if self.stage else random.choice(self.available_stages),
             'fmodel': self.fmodel if self.fmodel else random.choice(self.available_fmodels),
             'target_layer': self.target_layer,  # Will be set later if None
-            'target_epoch': self.target_epoch if self.target_epoch is not None else random.randint(0, 10),
+            'target_epoch': self.target_epoch if self.target_epoch is not None else random.randint(self.min_epoch, self.max_epoch),
             'target_step': self.target_step if self.target_step is not None else random.randint(0, 49),
             'learning_rate': self.learning_rate if self.learning_rate else random.choice(self.learning_rate_range),
             'inj_pos': self.inj_pos,
@@ -1394,6 +1399,7 @@ def test_optimizer_mitigation(model=None, stage=None, fmodel=None,
                              inj_pos=None, inj_values=None,
                              min_val=None, max_val=None,
                              seed=None, max_global_steps=None,
+                             min_epoch=None, max_epoch=None,
                              optimizers_to_test=None, num_experiments=10,
                              steps_after_injection=100):
     """
@@ -1407,6 +1413,7 @@ def test_optimizer_mitigation(model=None, stage=None, fmodel=None,
         inj_pos=inj_pos, inj_values=inj_values,
         min_val=min_val, max_val=max_val,
         seed=seed, max_global_steps=max_global_steps,
+        min_epoch=min_epoch, max_epoch=max_epoch,
         optimizers_to_test=optimizers_to_test,
         num_experiments=num_experiments,
         steps_after_injection=steps_after_injection
@@ -1435,9 +1442,13 @@ def main():
     parser.add_argument('--target-layer', type=str, default=None,
                        help='Target layer for injection (default: random)')
     parser.add_argument('--target-epoch', type=int, default=None,
-                       help='Target epoch for injection (default: random 0-10)')
+                       help='Target epoch for injection (default: random between min-epoch and max-epoch)')
     parser.add_argument('--target-step', type=int, default=None,
                        help='Target step for injection (default: random 0-49)')
+    parser.add_argument('--min-epoch', type=int, default=None,
+                       help='Minimum epoch for random injection selection (default: 0)')
+    parser.add_argument('--max-epoch', type=int, default=None,
+                       help='Maximum epoch for random injection selection (default: 10)')
     parser.add_argument('--learning-rate', type=float, default=None,
                        help='Learning rate (default: random from [0.0001, 0.001, 0.01, 0.1])')
     parser.add_argument('--min-val', type=float, default=None,
@@ -1484,6 +1495,8 @@ def main():
         max_val=args.max_val,
         seed=args.seed,
         max_global_steps=args.max_global_steps,
+        min_epoch=args.min_epoch,
+        max_epoch=args.max_epoch,
         optimizers_to_test=args.optimizers,
         num_experiments=args.num_experiments,
         steps_after_injection=args.steps_after_injection

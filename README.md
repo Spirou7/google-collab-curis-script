@@ -24,15 +24,31 @@
 ./shell_scripts/docker_run.sh optimizer \
     --model resnet18 \
     --stage bkwd_inject \
-    --fmodel N16_RD \
+    --fmodel INPUT \
     --learning-rate 0.001 \
     --min-val 3.6e12 \
-    --max-val 1.2e20 \
-    --seed 44 \
+    --max-val 1.2e18 \
+    --seed 45 \
     --max-global-steps 10000 \
     --optimizers adam sgd_vanilla \
     --num-experiments 100 \
-    --steps-after-injection 200
+    --steps-after-injection 800
+
+  ./shell_scripts/docker_run.sh optimizer \
+      --model resnet18 \
+      --stage bkwd_inject \
+      --fmodel INPUT \
+      --target-layer basicblock_4_basic_0_downsample_grad_in \
+      --learning-rate 0.001 \
+      --min-val 3.6e8 \
+      --max-val 1.2e15 \
+      --seed 45 \
+      --max-global-steps 10000 \
+      --min-epoch 2 \
+      --max-epoch 5 \
+      --optimizers adam sgd_vanilla \
+      --num-experiments 100 \
+      --steps-after-injection 800
 
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \
