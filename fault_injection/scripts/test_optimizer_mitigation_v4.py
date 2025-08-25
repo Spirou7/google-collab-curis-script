@@ -387,7 +387,7 @@ class SequentialOptimizerExperiment:
             train_accuracy.update_state(labels, predictions)
             return avg_loss, l_outputs, step_accuracy
         
-        # Training loop
+        # Training loop parameters
         steps_per_epoch = math.ceil(train_count / config.BATCH_SIZE)
         target_epoch = injection_params['target_epoch']
         target_step = injection_params['target_step']
@@ -395,13 +395,15 @@ class SequentialOptimizerExperiment:
         
         record(f"Target injection: epoch {target_epoch}, step {target_step}\n")
         record(f"Global injection step: {injection_global_step}\n")
+        record(f"Steps per epoch: {steps_per_epoch}\n")
         
-        # History tracking
+        # History tracking - simplified to match gold standard
         history = {
-            'steps': [],
-            'accuracy': [],  # Running average accuracy
-            'step_accuracy': [],  # Single-step accuracy (instantaneous)
-            'loss': [],
+            'global_steps': [],  # Track global step number
+            'epochs': [],        # Track epoch number
+            'steps': [],         # Track step within epoch
+            'accuracy': [],      # Per-step accuracy (matches gold standard)
+            'loss': [],          # Per-step loss (matches gold standard)
             'optimizer_state_magnitudes': [],  # Track optimizer state magnitudes
             'detailed_optimizer_states': []  # Track detailed per-variable, per-slot states
         }
@@ -430,11 +432,11 @@ class SequentialOptimizerExperiment:
                     total_magnitude += magnitude
                     var_count += 1
                 else:
-                    print(f"    Warning: Found inf/nan in optimizer variable at step {global_step}")
+                    print(f"    Warning: Found inf/nan in optimizer variable at epoch {epoch}, step {step}")
             
             # Debug logging
             if global_step % 50 == 0 and var_count > 0:
-                print(f"  Optimizer state magnitude at step {global_step}: {total_magnitude:.6f} from {var_count} variables")
+                print(f"  Optimizer state magnitude at epoch {epoch}, step {step}: {total_magnitude:.6f} from {var_count} variables")
             
             return total_magnitude if np.isfinite(total_magnitude) else 0.0
         
@@ -507,12 +509,7 @@ class SequentialOptimizerExperiment:
             
             return detailed_state
         
-        # Train until injection point
-        train_iterator = iter(train_dataset)
-        global_step = 0
-        epoch = 0
-        step = 0
-        
+        # Initialize training state
         injection_performed = False
         post_injection_accuracy = None
         post_injection_loss = None
@@ -529,229 +526,256 @@ class SequentialOptimizerExperiment:
         actual_inj_pos = None
         actual_inj_values = None
         
-        while global_step <= injection_global_step + self.steps_after_injection:
-            # Log current training step
-            print(f"Training step {global_step}")
-            
-            # Check for early termination
-            if injection_params['max_global_steps'] and global_step >= injection_params['max_global_steps']:
-                record(f"Early termination at step {global_step}\n")
+        # Calculate total epochs needed
+        start_epoch = 0
+        steps_after_injection_global = injection_global_step + self.steps_after_injection
+        total_epochs_needed = math.ceil(steps_after_injection_global / steps_per_epoch) + 1
+        
+        # Initialize global step counter
+        global_step = 0
+        early_terminate = False
+        
+        # Main training loop - structured by epochs and steps (matching gold standard)
+        for epoch in range(start_epoch, total_epochs_needed):
+            if early_terminate:
                 break
+                
+            # Create iterator for this epoch
+            train_iterator = iter(train_dataset)
             
-            # Reset iterator at epoch boundaries
-            if step >= steps_per_epoch:
-                step = 0
-                epoch += 1
-                train_iterator = iter(train_dataset)
+            # Loop through steps in this epoch
+            for step in range(steps_per_epoch):
+                # Check if we've trained enough steps after injection
+                if injection_performed and global_step > injection_global_step + self.steps_after_injection:
+                    early_terminate = True
+                    break
+                
+                # Check for max global steps termination
+                if injection_params['max_global_steps'] and global_step >= injection_params['max_global_steps']:
+                    record(f"Early termination at step {global_step}\n")
+                    early_terminate = True
+                    break
+                
+                # CRITICAL: Reset metrics at each step (matching gold standard lines 270-271)
+                train_loss.reset_states()
+                train_accuracy.reset_states()
+                
+                # Log current position
+                if global_step % 50 == 0:
+                    print(f"Epoch {epoch}/{total_epochs_needed}, Step {step}/{steps_per_epoch}, Global step {global_step}")
             
-            if global_step == injection_global_step:
-                # Store pre-injection accuracy (use last single-step accuracy)
-                if history['step_accuracy']:
-                    pre_injection_accuracy = history['step_accuracy'][-1]
+                if global_step == injection_global_step:
+                    # Store pre-injection accuracy
+                    if history['accuracy']:
+                        pre_injection_accuracy = history['accuracy'][-1]
+                    else:
+                        pre_injection_accuracy = 0.1  # Default if no history
+                
+                    
+                    # Perform injection
+                    record(f"\n🎯 Performing injection at epoch {epoch}, step {step} (global step {global_step})\n")
+                    record(f"Pre-injection accuracy: {pre_injection_accuracy:.4f}\n")
+                    
+                    try:
+                        iter_inputs = next(train_iterator)
+                    except StopIteration:
+                        train_iterator = iter(train_dataset)
+                        iter_inputs = next(train_iterator)
+                    
+                    inj_layer = injection_params['target_layer']
+                    
+                    # Create proper injection config object for inject_utils
+                    class InjectionConfig:
+                        def __init__(self, params):
+                            self.inj_pos = params.get('inj_pos', [])
+                            self.inj_values = params.get('inj_values', [])
+                            self.target_worker = -1
+                    
+                    inj_config = InjectionConfig(injection_params)
+                    
+                    # Get layer outputs based on stage
+                    if 'fwrd' in injection_params['stage']:
+                        record("Forward injection\n")
+                        l_inputs, l_kernels, l_outputs = fwrd_inj_train_step1(iter_inputs, inj_layer)
+                    else:
+                        record("Backward injection\n")
+                        l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
+                
+                    # Generate or reuse injection arguments
+                    if stored_injection and stored_injection['inj_pos'] is not None:
+                        # Reuse the exact same injection from the first optimizer
+                        record("Using stored injection from first optimizer\n")
+                        record(f"Stored positions: {stored_injection['inj_pos']}\n")
+                        record(f"Stored values: {stored_injection['inj_values']}\n")
+                        
+                        inj_args, inj_flag = get_replay_args(
+                            InjType[injection_params['fmodel']], inj_config, None, inj_layer,
+                            l_inputs, l_kernels, l_outputs, train_recorder,
+                            inj_pos=stored_injection['inj_pos'], 
+                            inj_values=stored_injection['inj_values']
+                        )
+                        
+                        # Store for return (redundant but for consistency)
+                        actual_inj_pos = stored_injection['inj_pos']
+                        actual_inj_values = stored_injection['inj_values']
+                        
+                    elif injection_params['min_val'] is not None and injection_params['max_val'] is not None:
+                        record("Generating NEW random injection with min/max range\n")
+                        inj_args, inj_flag = get_inj_args_with_random_range(
+                            InjType[injection_params['fmodel']], None, inj_layer,
+                            l_inputs, l_kernels, l_outputs, train_recorder,
+                            inj_config, injection_params['min_val'], injection_params['max_val']
+                        )
+                        
+                        # Extract the actual positions and values for storage
+                        actual_inj_pos = inj_config.inj_pos
+                        actual_inj_values = inj_config.inj_values
+                        
+                    elif injection_params['inj_pos'] and injection_params['inj_values']:
+                        record("Using specific injection position and value\n")
+                        inj_args, inj_flag = get_replay_args(
+                            InjType[injection_params['fmodel']], inj_config, None, inj_layer,
+                            l_inputs, l_kernels, l_outputs, train_recorder,
+                            inj_pos=injection_params['inj_pos'], 
+                            inj_values=injection_params['inj_values']
+                        )
+                        
+                        actual_inj_pos = injection_params['inj_pos']
+                        actual_inj_values = injection_params['inj_values']
+                        
+                    else:
+                        record("Using random injection\n")
+                        inj_args, inj_flag = get_inj_args(
+                            InjType[injection_params['fmodel']], None, inj_layer,
+                            l_inputs, l_kernels, l_outputs, train_recorder, inj_config
+                        )
+                        
+                        actual_inj_pos = inj_config.inj_pos
+                        actual_inj_values = inj_config.inj_values
+                    
+                    # Perform injection
+                    if 'fwrd' in injection_params['stage']:
+                        losses, injected_layer_outputs, injection_step_accuracy = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                    else:
+                        losses, injected_layer_outputs, injection_step_accuracy = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                    
+                    # Check for NaN/Inf after injection
+                    for var in model.trainable_variables:
+                        nan_weights += tf.reduce_sum(tf.cast(tf.math.is_nan(var), tf.int32)).numpy()
+                        inf_weights += tf.reduce_sum(tf.cast(tf.math.is_inf(var), tf.int32)).numpy()
+                    
+                    # Record metrics (per-step, matching gold standard)
+                    post_injection_accuracy = float(train_accuracy.result())  # This is single-step since we reset
+                    post_injection_loss = float(train_loss.result())
+                    lowest_post_injection_accuracy = post_injection_accuracy
+                    
+                    record(f"Post-injection: accuracy={post_injection_accuracy:.4f}, "
+                          f"loss={post_injection_loss:.4f}, NaN={nan_weights}, Inf={inf_weights}\n")
+                    
+                    injection_performed = True
+                    
                 else:
-                    pre_injection_accuracy = float(train_accuracy.result())
+                    # Normal training step
+                    try:
+                        batch_data = next(train_iterator)
+                    except StopIteration:
+                        train_iterator = iter(train_dataset)
+                        batch_data = next(train_iterator)
+                    
+                    losses, step_acc = train_step(batch_data)
+            
+                # Record metrics - all metrics are per-step now (matching gold standard)
+                current_accuracy = float(train_accuracy.result())  # Single-step accuracy since we reset
+                current_loss = float(train_loss.result())  # Single-step loss since we reset
                 
-                # Perform injection
-                record(f"\n🎯 Performing injection at step {global_step}\n")
-                record(f"Pre-injection accuracy: {pre_injection_accuracy:.4f}\n")
+                history['global_steps'].append(global_step)
+                history['epochs'].append(epoch)
+                history['steps'].append(step)
+                history['accuracy'].append(current_accuracy)
+                history['loss'].append(current_loss)
+            
+                # Track recovery after injection
+                if injection_performed and global_step > injection_global_step:
+                    steps_since_injection = global_step - injection_global_step
+                    
+                    # Check if we're within the recovery search limit
+                    if steps_since_injection <= recovery_search_limit:
+                        # Track when accuracy starts increasing
+                        if steps_to_accuracy_increase is None:
+                            if current_accuracy > lowest_post_injection_accuracy:
+                                steps_to_accuracy_increase = steps_since_injection
+                                accuracy_started_increasing = True
+                                record(f"📈 Accuracy started increasing after {steps_to_accuracy_increase} steps\n")
+                            else:
+                                # Update lowest post-injection accuracy
+                                lowest_post_injection_accuracy = min(lowest_post_injection_accuracy, current_accuracy)
+                        
+                        # Track when accuracy fully recovers (needs to reach 1.25x pre-injection accuracy)
+                        if steps_to_full_recovery is None and pre_injection_accuracy is not None:
+                            recovery_threshold = pre_injection_accuracy * 1.25
+                            if current_accuracy >= recovery_threshold:
+                                steps_to_full_recovery = steps_since_injection
+                                record(f"✅ Full recovery achieved after {steps_to_full_recovery} steps\n")
+                                record(f"   Pre-injection: {pre_injection_accuracy:.4f}, Current: {current_accuracy:.4f}\n")
+                                record(f"   Recovery threshold (1.25x): {recovery_threshold:.4f}\n")
+                                record(f"📊 Stopping early due to full recovery (saved {self.steps_after_injection - steps_since_injection} steps)\n")
+                                early_terminate = True  # Set flag to exit loops properly
+                    
+                    # Give up after 1000 steps
+                    elif steps_to_full_recovery is None:
+                        record(f"⚠️ Recovery tracking stopped after {recovery_search_limit} steps\n")
+                        # Set to a sentinel value to indicate we gave up
+                        if steps_to_full_recovery is None:
+                            steps_to_full_recovery = -1  # -1 indicates recovery not achieved within limit
                 
-                iter_inputs = next(train_iterator)
-                inj_layer = injection_params['target_layer']
-                
-                # Create proper injection config object for inject_utils
-                class InjectionConfig:
-                    def __init__(self, params):
-                        self.inj_pos = params.get('inj_pos', [])
-                        self.inj_values = params.get('inj_values', [])
-                        self.target_worker = -1
-                
-                inj_config = InjectionConfig(injection_params)
-                
-                # Get layer outputs based on stage
-                if 'fwrd' in injection_params['stage']:
-                    record("Forward injection\n")
-                    l_inputs, l_kernels, l_outputs = fwrd_inj_train_step1(iter_inputs, inj_layer)
+                # Track optimizer state magnitude
+                if len(model.optimizer.variables()) > 0:
+                    state_mag = get_optimizer_state_magnitude()
+                    history['optimizer_state_magnitudes'].append(state_mag)
+                    # Also track detailed state
+                    detailed = get_detailed_optimizer_state()
+                    history['detailed_optimizer_states'].append(detailed)
                 else:
-                    record("Backward injection\n")
-                    l_inputs, l_kernels, l_outputs = bkwd_inj_train_step1(iter_inputs, inj_layer)
+                    # For optimizers without state (like vanilla SGD)
+                    history['optimizer_state_magnitudes'].append(0.0)
+                    history['detailed_optimizer_states'].append({})
                 
-                # Generate or reuse injection arguments
-                if stored_injection and stored_injection['inj_pos'] is not None:
-                    # Reuse the exact same injection from the first optimizer
-                    record("Using stored injection from first optimizer\n")
-                    record(f"Stored positions: {stored_injection['inj_pos']}\n")
-                    record(f"Stored values: {stored_injection['inj_values']}\n")
-                    
-                    inj_args, inj_flag = get_replay_args(
-                        InjType[injection_params['fmodel']], inj_config, None, inj_layer,
-                        l_inputs, l_kernels, l_outputs, train_recorder,
-                        inj_pos=stored_injection['inj_pos'], 
-                        inj_values=stored_injection['inj_values']
-                    )
-                    
-                    # Store for return (redundant but for consistency)
-                    actual_inj_pos = stored_injection['inj_pos']
-                    actual_inj_values = stored_injection['inj_values']
-                    
-                elif injection_params['min_val'] is not None and injection_params['max_val'] is not None:
-                    record("Generating NEW random injection with min/max range\n")
-                    inj_args, inj_flag = get_inj_args_with_random_range(
-                        InjType[injection_params['fmodel']], None, inj_layer,
-                        l_inputs, l_kernels, l_outputs, train_recorder,
-                        inj_config, injection_params['min_val'], injection_params['max_val']
-                    )
-                    
-                    # Extract the actual positions and values for storage
-                    actual_inj_pos = inj_config.inj_pos
-                    actual_inj_values = inj_config.inj_values
-                    
-                elif injection_params['inj_pos'] and injection_params['inj_values']:
-                    record("Using specific injection position and value\n")
-                    inj_args, inj_flag = get_replay_args(
-                        InjType[injection_params['fmodel']], inj_config, None, inj_layer,
-                        l_inputs, l_kernels, l_outputs, train_recorder,
-                        inj_pos=injection_params['inj_pos'], 
-                        inj_values=injection_params['inj_values']
-                    )
-                    
-                    actual_inj_pos = injection_params['inj_pos']
-                    actual_inj_values = injection_params['inj_values']
-                    
-                else:
-                    record("Using random injection\n")
-                    inj_args, inj_flag = get_inj_args(
-                        InjType[injection_params['fmodel']], None, inj_layer,
-                        l_inputs, l_kernels, l_outputs, train_recorder, inj_config
-                    )
-                    
-                    actual_inj_pos = inj_config.inj_pos
-                    actual_inj_values = inj_config.inj_values
+                # Progress update (report the per-step metrics)
+                if global_step % 50 == 0:
+                    record(f"Epoch {epoch}, Step {step}/{steps_per_epoch}: "
+                          f"accuracy={current_accuracy:.4f}, loss={current_loss:.4f}\n")
                 
-                # Perform injection
-                if 'fwrd' in injection_params['stage']:
-                    losses, injected_layer_outputs, injection_step_accuracy = fwrd_inj_train_step2(iter_inputs, inj_args, inj_flag)
-                else:
-                    losses, injected_layer_outputs, injection_step_accuracy = bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag)
+                # Check for NaN termination (matching gold standard)
+                if not np.isfinite(current_loss):
+                    record(f"Encounter NaN! Terminate training!\n")
+                    early_terminate = True
+                    break
                 
-                # Check for NaN/Inf after injection
-                for var in model.trainable_variables:
-                    nan_weights += tf.reduce_sum(tf.cast(tf.math.is_nan(var), tf.int32)).numpy()
-                    inf_weights += tf.reduce_sum(tf.cast(tf.math.is_inf(var), tf.int32)).numpy()
-                
-                # Use single-step accuracy for injection measurement
-                post_injection_accuracy = injection_step_accuracy
-                post_injection_loss = float(train_loss.result())
-                lowest_post_injection_accuracy = post_injection_accuracy
-                
-                record(f"Post-injection single-step: accuracy={post_injection_accuracy:.4f}, "
-                      f"loss={post_injection_loss:.4f}, NaN={nan_weights}, Inf={inf_weights}\n")
-                record(f"Running average accuracy: {float(train_accuracy.result()):.4f}\n")
-                
-                injection_performed = True
-                
-            else:
-                # Normal training step
-                try:
-                    batch_data = next(train_iterator)
-                except StopIteration:
-                    train_iterator = iter(train_dataset)
-                    batch_data = next(train_iterator)
-                
-                losses, step_acc = train_step(batch_data)
-            
-            # Record metrics
-            history['steps'].append(global_step)
-            # Record running average accuracy
-            history['accuracy'].append(float(train_accuracy.result()))
-            history['loss'].append(float(train_loss.result()))
-            
-            # Record single-step accuracy
-            if injection_performed and global_step == injection_global_step:
-                # Use the injection step accuracy we already calculated
-                current_step_accuracy = injection_step_accuracy
-            elif not injection_performed or global_step != injection_global_step:
-                # Use the step accuracy from normal training
-                if 'step_acc' in locals():
-                    current_step_accuracy = float(step_acc)
-                else:
-                    # Fallback for steps before we have step_acc
-                    current_step_accuracy = float(train_accuracy.result())
-            
-            history['step_accuracy'].append(current_step_accuracy)
-            
-            # Use single-step accuracy for recovery tracking
-            current_accuracy = current_step_accuracy
-            
-            # Track recovery after injection
-            if injection_performed and global_step > injection_global_step:
-                steps_since_injection = global_step - injection_global_step
-                
-                # Check if we're within the recovery search limit
-                if steps_since_injection <= recovery_search_limit:
-                    # Track when accuracy starts increasing
-                    if steps_to_accuracy_increase is None:
-                        if current_accuracy > lowest_post_injection_accuracy:
-                            steps_to_accuracy_increase = steps_since_injection
-                            accuracy_started_increasing = True
-                            record(f"📈 Accuracy started increasing after {steps_to_accuracy_increase} steps\n")
-                        else:
-                            # Update lowest post-injection accuracy
-                            lowest_post_injection_accuracy = min(lowest_post_injection_accuracy, current_accuracy)
-                    
-                    # Track when accuracy fully recovers (needs to reach 1.25x pre-injection accuracy)
-                    if steps_to_full_recovery is None and pre_injection_accuracy is not None:
-                        recovery_threshold = pre_injection_accuracy * 1.25
-                        if current_accuracy >= recovery_threshold:
-                            steps_to_full_recovery = steps_since_injection
-                            record(f"✅ Full recovery achieved after {steps_to_full_recovery} steps\n")
-                            record(f"   Pre-injection: {pre_injection_accuracy:.4f}, Current: {current_accuracy:.4f}\n")
-                            record(f"   Recovery threshold (1.25x): {recovery_threshold:.4f}\n")
-                            record(f"📊 Stopping early due to full recovery (saved {self.steps_after_injection - steps_since_injection} steps)\n")
-                            break  # Exit the training loop early since recovery is achieved
-                
-                # Give up after 1000 steps
-                elif steps_to_full_recovery is None:
-                    record(f"⚠️ Recovery tracking stopped after {recovery_search_limit} steps\n")
-                    # Set to a sentinel value to indicate we gave up
-                    if steps_to_full_recovery is None:
-                        steps_to_full_recovery = -1  # -1 indicates recovery not achieved within limit
-            
-            # Track optimizer state magnitude
-            if len(model.optimizer.variables()) > 0:
-                state_mag = get_optimizer_state_magnitude()
-                history['optimizer_state_magnitudes'].append(state_mag)
-                # Also track detailed state
-                detailed = get_detailed_optimizer_state()
-                history['detailed_optimizer_states'].append(detailed)
-            else:
-                # For optimizers without state (like vanilla SGD)
-                history['optimizer_state_magnitudes'].append(0.0)
-                history['detailed_optimizer_states'].append({})
-            
-            # Progress update
-            if global_step % 50 == 0:
-                record(f"Step {global_step}: accuracy={train_accuracy.result():.4f}, "
-                      f"loss={train_loss.result():.4f}\n")
-            
-            global_step += 1
-            step += 1
+                # Increment global step counter
+                global_step += 1
         
         # Close log file
         train_recorder.close()
         
-        # Calculate recovery metrics using single-step accuracy if available
-        if 'step_accuracy' in history and history['step_accuracy']:
-            pre_injection_acc = history['step_accuracy'][injection_global_step - 1] if injection_global_step > 0 else 0
-            final_acc = history['step_accuracy'][-1]
-        else:
-            pre_injection_acc = history['accuracy'][injection_global_step - 1] if injection_global_step > 0 else 0
-            final_acc = history['accuracy'][-1] if history['accuracy'] else 0
+        # Calculate recovery metrics using per-step accuracy (now the only type)
+        # Find the index in history corresponding to injection
+        injection_idx = None
+        for idx, gs in enumerate(history['global_steps']):
+            if gs == injection_global_step:
+                injection_idx = idx
+                break
         
-        # Calculate degradation rate using single-step accuracy if available
-        accuracy_for_rate = history['step_accuracy'] if 'step_accuracy' in history and history['step_accuracy'] else history['accuracy']
-        if len(accuracy_for_rate) > injection_global_step + 10:
-            recovery_steps = history['steps'][injection_global_step + 1:]
-            recovery_acc = accuracy_for_rate[injection_global_step + 1:]
+        if injection_idx is not None and injection_idx > 0:
+            pre_injection_acc = history['accuracy'][injection_idx - 1]
+        else:
+            pre_injection_acc = 0.1  # Default
+        
+        final_acc = history['accuracy'][-1] if history['accuracy'] else 0
+        
+        # Calculate degradation rate
+        if injection_idx is not None and len(history['accuracy']) > injection_idx + 10:
+            recovery_steps = history['global_steps'][injection_idx + 1:]
+            recovery_acc = history['accuracy'][injection_idx + 1:]
             if len(recovery_steps) > 1:
                 z = np.polyfit(recovery_steps, recovery_acc, 1)
                 degradation_rate = float(z[0])
@@ -877,25 +901,21 @@ class SequentialOptimizerExperiment:
             steps_per_epoch = math.ceil(50000 / config.BATCH_SIZE)
             injection_step = injection_params['target_epoch'] * steps_per_epoch + injection_params['target_step']
         
-        # Plot 1: Accuracy over time (single-step accuracy if available, else running average)
+        # Plot 1: Accuracy over time (per-step accuracy, matching gold standard)
         for i, (opt_name, result) in enumerate(optimizer_results.items()):
             if 'history' in result:
                 history = result['history']
-                # Prefer single-step accuracy if available
-                if 'step_accuracy' in history and history['step_accuracy']:
-                    ax1.plot(history['steps'], history['step_accuracy'],
-                            color=colors[i], label=f'{opt_name} (final: {history["step_accuracy"][-1]:.3f})',
-                            linewidth=2, alpha=0.8)
-                else:
-                    # Fallback to running average
-                    ax1.plot(history['steps'], history['accuracy'],
-                            color=colors[i], label=f'{opt_name} (final: {result.get("final_accuracy", 0):.3f})',
+                # Use global_steps for x-axis and accuracy for y-axis
+                if 'global_steps' in history and 'accuracy' in history:
+                    final_acc = history['accuracy'][-1] if history['accuracy'] else 0
+                    ax1.plot(history['global_steps'], history['accuracy'],
+                            color=colors[i], label=f'{opt_name} (final: {final_acc:.3f})',
                             linewidth=2, alpha=0.8)
         
         ax1.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
         ax1.set_xlabel('Training Step')
-        ax1.set_ylabel('Single-Step Accuracy')
-        ax1.set_title('Instantaneous Accuracy During Training and Recovery')
+        ax1.set_ylabel('Per-Step Accuracy')
+        ax1.set_title('Per-Step Accuracy During Training and Recovery')
         ax1.legend(loc='best')
         ax1.grid(True, alpha=0.3)
         
@@ -903,9 +923,10 @@ class SequentialOptimizerExperiment:
         for i, (opt_name, result) in enumerate(optimizer_results.items()):
             if 'history' in result:
                 history = result['history']
-                ax2.plot(history['steps'], history['loss'],
-                        color=colors[i], label=opt_name,
-                        linewidth=2, alpha=0.8)
+                if 'global_steps' in history and 'loss' in history:
+                    ax2.plot(history['global_steps'], history['loss'],
+                            color=colors[i], label=opt_name,
+                            linewidth=2, alpha=0.8)
         
         ax2.axvline(x=injection_step, color='red', linestyle='--', alpha=0.7)
         ax2.set_xlabel('Training Step')
@@ -943,9 +964,10 @@ class SequentialOptimizerExperiment:
         ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
         
         # Plot 4: Individual Optimizer State Variables over time
-        # First collect all unique slot types across all optimizers
+        # NEW: Track each variable separately instead of averaging
+        per_variable_data = {}  # {optimizer: {variable_name: {slot_type: [magnitudes_over_time]}}}
         all_slot_types = set()
-        slot_data = {}  # {optimizer: {slot_type: [magnitudes_over_time]}}
+        all_variables = set()
         
         # Debug: Print what data we have
         print("\n=== Debugging Optimizer State Data ===")
@@ -965,75 +987,95 @@ class SequentialOptimizerExperiment:
                         first_5 = result['history']['optimizer_state_magnitudes'][:5]
                         print(f"  - First 5 magnitudes: {first_5}")
         
+        # Collect per-variable data for each optimizer
         for opt_name, result in optimizer_results.items():
             if 'history' in result and 'detailed_optimizer_states' in result['history']:
                 detailed_states = result['history']['detailed_optimizer_states']
                 if detailed_states and len(detailed_states) > 0:
-                    slot_data[opt_name] = {}
+                    per_variable_data[opt_name] = {}
                     
-                    # Find all slot types in this optimizer
+                    # First pass: identify all variables and slot types
                     for state in detailed_states:
                         for var_name, slots in state.items():
                             if var_name != '_iteration' and isinstance(slots, dict):
+                                all_variables.add(var_name)
                                 all_slot_types.update(slots.keys())
+                                if var_name not in per_variable_data[opt_name]:
+                                    per_variable_data[opt_name][var_name] = {}
                     
-                    # Aggregate slot magnitudes across all variables for each timestep
-                    for slot_type in all_slot_types:
-                        slot_data[opt_name][slot_type] = []
-                        for state in detailed_states:
-                            total_magnitude = 0.0
-                            count = 0
-                            for var_name, slots in state.items():
-                                if var_name != '_iteration' and isinstance(slots, dict):
-                                    if slot_type in slots:
-                                        total_magnitude += slots[slot_type]
-                                        count += 1
-                            # Store average magnitude for this slot type at this timestep
-                            if count > 0:
-                                slot_data[opt_name][slot_type].append(total_magnitude / count)
-                            else:
-                                slot_data[opt_name][slot_type].append(0.0)
+                    # Second pass: collect magnitude time series for each variable-slot combination
+                    for var_name in per_variable_data[opt_name]:
+                        for slot_type in all_slot_types:
+                            per_variable_data[opt_name][var_name][slot_type] = []
+                            for state in detailed_states:
+                                if var_name in state and isinstance(state[var_name], dict):
+                                    if slot_type in state[var_name]:
+                                        per_variable_data[opt_name][var_name][slot_type].append(state[var_name][slot_type])
+                                    else:
+                                        per_variable_data[opt_name][var_name][slot_type].append(0.0)
+                                else:
+                                    per_variable_data[opt_name][var_name][slot_type].append(0.0)
         
-        # Plot each optimizer-slot combination as a separate line
+        # Plot individual variable-slot combinations
         line_styles = ['-', '--', '-.', ':']
         marker_styles = ['o', 's', '^', 'v', 'D', 'p', '*', 'x']
+        
+        # Limit number of variables to display (to avoid overcrowding)
+        MAX_VARIABLES_TO_PLOT = 5  # Show only first 5 variables
         
         plot_index = 0
         has_plotted_data = False
         
-        print("\n=== Plotting Optimizer State Data ===")
+        print("\n=== Plotting Individual Variable State Data ===")
         print(f"Slot types found: {all_slot_types}")
-        print(f"Optimizers with slot data: {list(slot_data.keys())}")
+        print(f"Total variables found: {len(all_variables)}")
+        print(f"Plotting first {MAX_VARIABLES_TO_PLOT} variables per optimizer")
         
-        for i, (opt_name, slots) in enumerate(slot_data.items()):
+        # Create a color map for better distinction
+        import matplotlib.cm as cm
+        cmap = cm.get_cmap('tab20')  # Use tab20 for more distinct colors
+        
+        for opt_idx, (opt_name, variables) in enumerate(per_variable_data.items()):
             result = optimizer_results[opt_name]
             if 'history' in result:
-                for j, (slot_type, magnitudes) in enumerate(slots.items()):
-                    if magnitudes:  # Remove the condition that filters out zero magnitudes
-                        steps = result['history']['steps'][:len(magnitudes)]
-                        # Use different line styles and markers for different slot types
-                        line_style = line_styles[j % len(line_styles)]
-                        marker_style = marker_styles[j % len(marker_styles)]
-                        
-                        # Create label with optimizer and slot type
-                        label = f'{opt_name}-{slot_type}'
-                        
-                        # Check if there's any non-zero data
-                        has_nonzero = any(m > 0 for m in magnitudes)
-                        print(f"  {label}: {len(magnitudes)} points, has_nonzero={has_nonzero}, max={max(magnitudes) if magnitudes else 0:.6f}")
-                        
-                        # Plot with unique color for each optimizer-slot combination
-                        ax4.plot(steps, magnitudes,
-                                color=colors[i % len(colors)],
-                                label=label,
-                                linewidth=2,
-                                alpha=0.8,
-                                linestyle=line_style,
-                                marker=marker_style,
-                                markevery=max(1, len(steps)//20),  # Show markers sparsely
-                                markersize=4)
-                        plot_index += 1
-                        has_plotted_data = True
+                # Sort variables by name for consistent ordering
+                sorted_vars = sorted(list(variables.keys()))
+                vars_to_plot = sorted_vars[:MAX_VARIABLES_TO_PLOT]  # Limit number of variables
+                
+                for var_idx, var_name in enumerate(vars_to_plot):
+                    for slot_idx, slot_type in enumerate(sorted(all_slot_types)):
+                        if slot_type in variables[var_name] and variables[var_name][slot_type]:
+                            magnitudes = variables[var_name][slot_type]
+                            steps = result['history']['global_steps'][:len(magnitudes)]
+                            
+                            # Create a shorter variable name for the label
+                            short_var_name = var_name.split('/')[-1] if '/' in var_name else var_name
+                            if len(short_var_name) > 20:
+                                short_var_name = short_var_name[:8] + '...' + short_var_name[-8:]
+                            
+                            # Create label
+                            label = f'{opt_name}-{short_var_name}-{slot_type}'
+                            
+                            # Check if there's any non-zero data
+                            has_nonzero = any(m > 0 for m in magnitudes)
+                            if has_nonzero:  # Only plot if there's actual data
+                                # Use different colors for different optimizers and variables
+                                color_idx = (opt_idx * MAX_VARIABLES_TO_PLOT + var_idx) % 20
+                                line_color = cmap(color_idx / 20.0)
+                                
+                                # Use different line styles for different slot types
+                                line_style = line_styles[slot_idx % len(line_styles)]
+                                
+                                print(f"  Plotting: {label[:50]}... (max={max(magnitudes):.6f})")
+                                
+                                ax4.plot(steps, magnitudes,
+                                        color=line_color,
+                                        label=label if plot_index < 10 else None,  # Limit legend entries
+                                        linewidth=1.5,
+                                        alpha=0.7,
+                                        linestyle=line_style)
+                                plot_index += 1
+                                has_plotted_data = True
         
         # If no detailed states, fall back to total magnitude plot
         if not has_plotted_data:
@@ -1042,7 +1084,7 @@ class SequentialOptimizerExperiment:
                 if 'history' in result and 'optimizer_state_magnitudes' in result['history']:
                     history = result['history']
                     if history['optimizer_state_magnitudes']:
-                        steps = history['steps'][:len(history['optimizer_state_magnitudes'])]
+                        steps = history['global_steps'][:len(history['optimizer_state_magnitudes'])]
                         magnitudes = history['optimizer_state_magnitudes']
                         # Filter out inf/nan values for display
                         filtered_magnitudes = [m if np.isfinite(m) else np.nan for m in magnitudes]
@@ -1180,7 +1222,7 @@ Post-Injection Results:
             for opt_name, result in optimizer_results.items():
                 if 'history' in result and 'detailed_optimizer_states' in result['history']:
                     detailed_states = result['history']['detailed_optimizer_states']
-                    steps = result['history']['steps'][:len(detailed_states)]
+                    steps = result['history']['global_steps'][:len(detailed_states)]
                     
                     plot_data[opt_name] = {}
                     for slot_type in slot_types_found:
@@ -1231,7 +1273,7 @@ Post-Injection Results:
                                 if mags:
                                     filtered_mags = [m if np.isfinite(m) else np.nan for m in mags]
                                     if any(np.isfinite(m) and m > 0 for m in filtered_mags):
-                                        steps = result['history']['steps'][:len(filtered_mags)]
+                                        steps = result['history']['global_steps'][:len(filtered_mags)]
                                         ax6.plot(steps, filtered_mags,
                                                 color=colors[i], label=f'{opt_name} ({primary_slot})',
                                                 linewidth=2, alpha=0.8)

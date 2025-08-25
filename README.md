@@ -28,11 +28,11 @@
     --learning-rate 0.001 \
     --min-val 3.6e12 \
     --max-val 1.2e20 \
-    --seed 43 \
+    --seed 44 \
     --max-global-steps 10000 \
     --optimizers adam sgd_vanilla \
-    --num-experiments 1 \
-    --steps-after-injection 100
+    --num-experiments 100 \
+    --steps-after-injection 200
 
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \
