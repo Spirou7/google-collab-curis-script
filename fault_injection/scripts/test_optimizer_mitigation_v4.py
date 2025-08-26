@@ -546,34 +546,84 @@ class SequentialOptimizerExperiment:
             
             momentum_values = {'m': {}, 'v': {}}
             
-            # For each trainable variable, get its momentum slots
+            # TensorFlow 2.x stores optimizer variables differently
+            # They are stored in optimizer.variables() with specific naming patterns
+            opt_vars = model.optimizer.variables()
+            
+            # Create a mapping from trainable variables to their momentum slots
             for var_idx, var in enumerate(model.trainable_variables[:5]):  # Limit to first 5 for readability
                 var_name = var.name.split('/')[-1].replace(':0', '')
                 if len(var_name) > 30:
                     var_name = f"var_{var_idx}_{var_name[:15]}...{var_name[-10:]}"
                 
-                # Get m (first moment) slot
-                m_slot = model.optimizer.get_slot(var, 'm')
-                if m_slot is not None:
-                    m_values = m_slot.numpy().flatten()
-                    # Get statistics and sample values
-                    momentum_values['m'][var_name] = {
-                        'mean': float(np.mean(np.abs(m_values))),
-                        'max': float(np.max(np.abs(m_values))),
-                        'min': float(np.min(m_values)),
-                        'max_signed': float(np.max(m_values)),
-                        'first_5': m_values[:5].tolist() if len(m_values) >= 5 else m_values.tolist()
-                    }
+                # Find corresponding momentum variables in optimizer.variables()
+                # Adam stores them with names like 'Adam/m/var_name:0' and 'Adam/v/var_name:0'
+                for opt_var in opt_vars:
+                    opt_var_name = opt_var.name
+                    
+                    # Check if this is the m (momentum) slot for our variable
+                    if '/m/' in opt_var_name or '_m:' in opt_var_name:
+                        # Try to match by shape and position
+                        if opt_var.shape == var.shape:
+                            # This is likely the momentum for this variable
+                            m_values = opt_var.numpy().flatten()
+                            if var_name not in momentum_values['m']:  # Only set if not already found
+                                momentum_values['m'][var_name] = {
+                                    'mean': float(np.mean(np.abs(m_values))),
+                                    'max': float(np.max(np.abs(m_values))),
+                                    'min': float(np.min(m_values)),
+                                    'max_signed': float(np.max(m_values)),
+                                    'first_5': m_values[:5].tolist() if len(m_values) >= 5 else m_values.tolist()
+                                }
+                    
+                    # Check if this is the v (variance) slot for our variable
+                    elif '/v/' in opt_var_name or '_v:' in opt_var_name:
+                        if opt_var.shape == var.shape:
+                            v_values = opt_var.numpy().flatten()
+                            if var_name not in momentum_values['v']:  # Only set if not already found
+                                momentum_values['v'][var_name] = {
+                                    'mean': float(np.mean(v_values)),
+                                    'max': float(np.max(v_values)),
+                                    'first_5': v_values[:5].tolist() if len(v_values) >= 5 else v_values.tolist()
+                                }
+            
+            # If we couldn't find momentum variables by name matching, try by index
+            # Adam typically stores variables in order: [iterations, m_vars..., v_vars...]
+            if not momentum_values['m'] and len(opt_vars) > 1:
+                # Skip first variable (iteration counter)
+                num_trainable = min(5, len(model.trainable_variables))
                 
-                # Get v (second moment) slot  
-                v_slot = model.optimizer.get_slot(var, 'v')
-                if v_slot is not None:
-                    v_values = v_slot.numpy().flatten()
-                    momentum_values['v'][var_name] = {
-                        'mean': float(np.mean(v_values)),
-                        'max': float(np.max(v_values)),
-                        'first_5': v_values[:5].tolist() if len(v_values) >= 5 else v_values.tolist()
-                    }
+                # Assume m variables come first after iteration counter
+                for i in range(num_trainable):
+                    if i + 1 < len(opt_vars):
+                        var = model.trainable_variables[i]
+                        var_name = f"var_{i}"
+                        m_var = opt_vars[i + 1]  # +1 to skip iteration counter
+                        
+                        if m_var.shape == var.shape and m_var.dtype in [tf.float32, tf.float16]:
+                            m_values = m_var.numpy().flatten()
+                            momentum_values['m'][var_name] = {
+                                'mean': float(np.mean(np.abs(m_values))),
+                                'max': float(np.max(np.abs(m_values))),
+                                'min': float(np.min(m_values)),
+                                'max_signed': float(np.max(m_values)),
+                                'first_5': m_values[:5].tolist() if len(m_values) >= 5 else m_values.tolist()
+                            }
+                    
+                    # v variables typically come after all m variables
+                    v_idx = 1 + num_trainable + i  # iteration + all m vars + current v index
+                    if v_idx < len(opt_vars):
+                        var = model.trainable_variables[i]
+                        var_name = f"var_{i}"
+                        v_var = opt_vars[v_idx]
+                        
+                        if v_var.shape == var.shape and v_var.dtype in [tf.float32, tf.float16]:
+                            v_values = v_var.numpy().flatten()
+                            momentum_values['v'][var_name] = {
+                                'mean': float(np.mean(v_values)),
+                                'max': float(np.max(v_values)),
+                                'first_5': v_values[:5].tolist() if len(v_values) >= 5 else v_values.tolist()
+                            }
             
             return momentum_values
         
