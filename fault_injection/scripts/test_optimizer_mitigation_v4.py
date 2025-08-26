@@ -406,7 +406,16 @@ class SequentialOptimizerExperiment:
                                                         inject=inj_flag, inj_args=inj_args)
             
             gradients = manual_gradients + golden_gradients[golden_grad_idx[injection_params['model']]:]
+            
+            # Save current model weights before applying gradients
+            saved_weights = [tf.Variable(w) for w in model.trainable_variables]
+            
+            # Apply gradients - this updates BOTH optimizer state AND model weights
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
+            
+            # Restore original weights (but optimizer state remains corrupted)
+            for var, saved_weight in zip(model.trainable_variables, saved_weights):
+                var.assign(saved_weight)
             
             # Calculate single-step accuracy
             correct_predictions = tf.equal(tf.argmax(predictions, axis=1), tf.cast(labels, tf.int64))
@@ -544,11 +553,21 @@ class SequentialOptimizerExperiment:
             if 'adam' not in optimizer_name.lower():
                 return {}
             
+            # Check if optimizer has been initialized (has variables)
+            if not model.optimizer.variables():
+                return {}  # Optimizer not yet initialized
+            
             momentum_values = {'m': {}, 'v': {}}
             
             # TensorFlow 2.x stores optimizer variables differently
             # They are stored in optimizer.variables() with specific naming patterns
             opt_vars = model.optimizer.variables()
+            
+            # Debug: log optimizer variable names once to understand structure
+            if global_step == injection_global_step:
+                print(f"\n  DEBUG: Adam optimizer has {len(opt_vars)} variables")
+                for i, opt_var in enumerate(opt_vars[:10]):  # Show first 10
+                    print(f"    Var {i}: {opt_var.name}, shape: {opt_var.shape}, dtype: {opt_var.dtype}")
             
             # Create a mapping from trainable variables to their momentum slots
             for var_idx, var in enumerate(model.trainable_variables[:5]):  # Limit to first 5 for readability
