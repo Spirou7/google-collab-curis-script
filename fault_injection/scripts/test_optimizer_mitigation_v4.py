@@ -62,7 +62,8 @@ class SequentialOptimizerExperiment:
                  min_epoch=None, max_epoch=None,
                  # Optimizer comparison parameters
                  optimizers_to_test=None, num_experiments=10,
-                 steps_after_injection=100):
+                 steps_after_injection=100,
+                 clear_optimizer_state_on_nan=False):
         """
         Initialize experiment with flexible parameters matching random_injection.py
         
@@ -85,6 +86,7 @@ class SequentialOptimizerExperiment:
             optimizers_to_test: List of optimizer names to compare
             num_experiments: Number of experiments to run
             steps_after_injection: Maximum steps to continue after injection (stops early if 1.25x recovery achieved)
+            clear_optimizer_state_on_nan: Clear optimizer internal states when NaN/Inf detected (default: False)
         """
         # Store injection parameters
         self.model = model
@@ -107,6 +109,7 @@ class SequentialOptimizerExperiment:
         self.optimizers_to_test = optimizers_to_test or ['adam', 'sgd', 'sgd_vanilla', 'rmsprop', 'adamw']
         self.num_experiments = num_experiments
         self.steps_after_injection = steps_after_injection
+        self.clear_optimizer_state_on_nan = clear_optimizer_state_on_nan
         
         # Available options (from random_injection.py)
         self.available_models = ['resnet18', 'resnet18_sgd', 'resnet18_nobn', 'effnet', 'densenet', 'nfnet']
@@ -257,6 +260,27 @@ class SequentialOptimizerExperiment:
             return optimizer_class(learning_rate=lr_schedule, rho=0.95)
         else:
             return optimizer_class(learning_rate=lr_schedule)
+    
+    def clear_optimizer_states(self, optimizer):
+        """Clear/reset all internal state variables of the optimizer."""
+        # For optimizers with slots (Adam, RMSprop, SGD with momentum)
+        if hasattr(optimizer, '_slots'):
+            # Clear all slot variables
+            optimizer._slots = {}
+        
+        # Reset iteration counter if exists
+        if hasattr(optimizer, 'iterations'):
+            optimizer.iterations.assign(0)
+        
+        # For TensorFlow 2.x optimizers
+        if hasattr(optimizer, 'variables'):
+            # Get all optimizer variables (excluding iteration counter)
+            for var in optimizer.variables():
+                if var.dtype in [tf.float32, tf.float16, tf.float64]:
+                    # Reset to zeros
+                    var.assign(tf.zeros_like(var))
+        
+        return optimizer
     
     def train_with_injection(self, optimizer_name: str, injection_params: Dict, 
                             experiment_dir: str, stored_injection: Dict = None) -> Dict:
@@ -410,7 +434,8 @@ class SequentialOptimizerExperiment:
             'accuracy': [],      # Per-step accuracy (matches gold standard)
             'loss': [],          # Per-step loss (matches gold standard)
             'optimizer_state_magnitudes': [],  # Track optimizer state magnitudes
-            'detailed_optimizer_states': []  # Track detailed per-variable, per-slot states
+            'detailed_optimizer_states': [],  # Track detailed per-variable, per-slot states
+            'momentum_values': []  # Track actual m,v values over time for Adam
         }
         
         def get_optimizer_state_magnitude():
@@ -514,6 +539,44 @@ class SequentialOptimizerExperiment:
             
             return detailed_state
         
+        def log_adam_momentum_values():
+            """Log actual m and v values for Adam optimizer."""
+            if 'adam' not in optimizer_name.lower():
+                return {}
+            
+            momentum_values = {'m': {}, 'v': {}}
+            
+            # For each trainable variable, get its momentum slots
+            for var_idx, var in enumerate(model.trainable_variables[:5]):  # Limit to first 5 for readability
+                var_name = var.name.split('/')[-1].replace(':0', '')
+                if len(var_name) > 30:
+                    var_name = f"var_{var_idx}_{var_name[:15]}...{var_name[-10:]}"
+                
+                # Get m (first moment) slot
+                m_slot = model.optimizer.get_slot(var, 'm')
+                if m_slot is not None:
+                    m_values = m_slot.numpy().flatten()
+                    # Get statistics and sample values
+                    momentum_values['m'][var_name] = {
+                        'mean': float(np.mean(np.abs(m_values))),
+                        'max': float(np.max(np.abs(m_values))),
+                        'min': float(np.min(m_values)),
+                        'max_signed': float(np.max(m_values)),
+                        'first_5': m_values[:5].tolist() if len(m_values) >= 5 else m_values.tolist()
+                    }
+                
+                # Get v (second moment) slot  
+                v_slot = model.optimizer.get_slot(var, 'v')
+                if v_slot is not None:
+                    v_values = v_slot.numpy().flatten()
+                    momentum_values['v'][var_name] = {
+                        'mean': float(np.mean(v_values)),
+                        'max': float(np.max(v_values)),
+                        'first_5': v_values[:5].tolist() if len(v_values) >= 5 else v_values.tolist()
+                    }
+            
+            return momentum_values
+        
         # Initialize training state
         injection_performed = False
         post_injection_accuracy = None
@@ -572,6 +635,14 @@ class SequentialOptimizerExperiment:
                     else:
                         pre_injection_accuracy = 0.1  # Default if no history
                 
+                    # Log momentum values BEFORE injection
+                    pre_injection_momentum = log_adam_momentum_values()
+                    if pre_injection_momentum:
+                        record(f"\n📊 Pre-injection Adam momentum values:\n")
+                        for var_name, m_data in pre_injection_momentum.get('m', {}).items():
+                            record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}, max_signed={m_data['max_signed']:.2e}\n")
+                            if abs(m_data['max']) > 1e-6:  # Only show values if non-trivial
+                                record(f"    First 5 values: {[f'{v:.2e}' for v in m_data['first_5']]}\n")
                     
                     # Perform injection
                     record(f"\n🎯 Performing injection at epoch {epoch}, step {step} (global step {global_step})\n")
@@ -665,6 +736,12 @@ class SequentialOptimizerExperiment:
                         nan_weights += tf.reduce_sum(tf.cast(tf.math.is_nan(var), tf.int32)).numpy()
                         inf_weights += tf.reduce_sum(tf.cast(tf.math.is_inf(var), tf.int32)).numpy()
                     
+                    # Clear optimizer states if NaN/Inf detected and clearing is enabled
+                    if self.clear_optimizer_state_on_nan and (nan_weights > 0 or inf_weights > 0):
+                        record(f"🔧 Clearing optimizer states due to NaN/Inf detection\n")
+                        self.clear_optimizer_states(model.optimizer)
+                        record(f"   Optimizer states cleared for {optimizer_name}\n")
+                    
                     # Record metrics (per-step, matching gold standard)
                     post_injection_accuracy = float(train_accuracy.result())  # This is single-step since we reset
                     post_injection_loss = float(train_loss.result())
@@ -672,6 +749,24 @@ class SequentialOptimizerExperiment:
                     
                     record(f"Post-injection: accuracy={post_injection_accuracy:.4f}, "
                           f"loss={post_injection_loss:.4f}, NaN={nan_weights}, Inf={inf_weights}\n")
+                    
+                    # Log momentum values AFTER injection
+                    post_injection_momentum = log_adam_momentum_values()
+                    if post_injection_momentum:
+                        record(f"\n📊 Post-injection Adam momentum values:\n")
+                        for var_name, m_data in post_injection_momentum.get('m', {}).items():
+                            record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}, max_signed={m_data['max_signed']:.2e}\n")
+                            if abs(m_data['max']) > 1e-6:  # Only show values if non-trivial
+                                record(f"    First 5 values: {[f'{v:.2e}' for v in m_data['first_5']]}\n")
+                            
+                            # Check if momentum got corrupted to the right range for SlowDegrade
+                            max_m = m_data['max']
+                            if 2.6e8 <= max_m <= 1.1e19:
+                                record(f"  ✅ {var_name} momentum in SlowDegrade range! ({max_m:.2e})\n")
+                            elif max_m > 1.1e19:
+                                record(f"  ⚠️ {var_name} momentum too large for SlowDegrade (>{1.1e19}, actual: {max_m:.2e})\n")
+                            elif max_m > 1e6:  # Only warn if there's substantial momentum
+                                record(f"  ❌ {var_name} momentum below SlowDegrade range (<2.6e8, actual: {max_m:.2e})\n")
                     
                     injection_performed = True
                     
@@ -698,6 +793,31 @@ class SequentialOptimizerExperiment:
                 # Track recovery after injection
                 if injection_performed and global_step > injection_global_step:
                     steps_since_injection = global_step - injection_global_step
+                    
+                    # Log momentum decay every 10 steps to track the 0.9^k pattern
+                    if 'adam' in optimizer_name.lower() and steps_since_injection % 10 == 0 and steps_since_injection <= 100:
+                        current_momentum = log_adam_momentum_values()
+                        if current_momentum and 'post_injection_momentum' in locals():
+                            record(f"\n📉 Momentum decay at t+{steps_since_injection}:\n")
+                            for var_name, m_data in current_momentum.get('m', {}).items():
+                                if var_name in post_injection_momentum.get('m', {}):
+                                    initial_max = post_injection_momentum['m'][var_name]['max']
+                                    current_max = m_data['max']
+                                    
+                                    # Calculate expected decay (0.9^steps for Adam default beta1)
+                                    expected = initial_max * (0.9 ** steps_since_injection)
+                                    
+                                    record(f"  {var_name}:\n")
+                                    record(f"    Current max(|m|): {current_max:.2e}\n")
+                                    record(f"    Expected (0.9^{steps_since_injection}): {expected:.2e}\n")
+                                    
+                                    # Check if actual decay matches theoretical
+                                    if initial_max > 1e6:  # Only check if initial was substantial
+                                        ratio = current_max / expected if expected > 0 else float('inf')
+                                        if 0.5 <= ratio <= 2.0:
+                                            record(f"    ✓ Decay following ~0.9^k pattern (ratio: {ratio:.2f})\n")
+                                        else:
+                                            record(f"    ✗ Decay NOT following 0.9^k pattern (ratio: {ratio:.2f})\n")
                     
                     # Check if we're within the recovery search limit
                     if steps_since_injection <= recovery_search_limit:
@@ -736,10 +856,18 @@ class SequentialOptimizerExperiment:
                     # Also track detailed state
                     detailed = get_detailed_optimizer_state()
                     history['detailed_optimizer_states'].append(detailed)
+                    
+                    # Store actual momentum values for Adam
+                    if 'adam' in optimizer_name.lower():
+                        momentum_snapshot = log_adam_momentum_values()
+                        history['momentum_values'].append(momentum_snapshot)
+                    else:
+                        history['momentum_values'].append({})
                 else:
                     # For optimizers without state (like vanilla SGD)
                     history['optimizer_state_magnitudes'].append(0.0)
                     history['detailed_optimizer_states'].append({})
+                    history['momentum_values'].append({})
                 
                 # Progress update - log EVERY step (matching gold standard lines 292-297)
                 record(f"Epoch: {epoch}/{total_epochs_needed}, step: {step}/{steps_per_epoch}, "
@@ -1401,7 +1529,8 @@ def test_optimizer_mitigation(model=None, stage=None, fmodel=None,
                              seed=None, max_global_steps=None,
                              min_epoch=None, max_epoch=None,
                              optimizers_to_test=None, num_experiments=10,
-                             steps_after_injection=100):
+                             steps_after_injection=100,
+                             clear_optimizer_state_on_nan=False):
     """
     Main function to run optimizer mitigation experiments.
     Parameters match random_fault_injection() for consistency.
@@ -1416,7 +1545,8 @@ def test_optimizer_mitigation(model=None, stage=None, fmodel=None,
         min_epoch=min_epoch, max_epoch=max_epoch,
         optimizers_to_test=optimizers_to_test,
         num_experiments=num_experiments,
-        steps_after_injection=steps_after_injection
+        steps_after_injection=steps_after_injection,
+        clear_optimizer_state_on_nan=clear_optimizer_state_on_nan
     )
     
     return experiment.run()
@@ -1468,6 +1598,8 @@ def main():
                        help='Number of experiments to run (default: 10)')
     parser.add_argument('--steps-after-injection', type=int, default=100,
                        help='Maximum steps to train after injection, stops early if accuracy reaches 1.25x pre-injection level (default: 100)')
+    parser.add_argument('--clear-optimizer-state-on-nan', action='store_true',
+                       help='Clear optimizer internal states when NaN/Inf detected after injection')
     
     args = parser.parse_args()
     
@@ -1499,7 +1631,8 @@ def main():
         max_epoch=args.max_epoch,
         optimizers_to_test=args.optimizers,
         num_experiments=args.num_experiments,
-        steps_after_injection=args.steps_after_injection
+        steps_after_injection=args.steps_after_injection,
+        clear_optimizer_state_on_nan=args.clear_optimizer_state_on_nan
     )
     
     print(f"\n{'='*80}")

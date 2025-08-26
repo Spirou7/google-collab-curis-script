@@ -40,15 +40,15 @@
       --fmodel INPUT \
       --target-layer basicblock_4_basic_0_downsample_grad_in \
       --learning-rate 0.001 \
-      --min-val 3.6e8 \
-      --max-val 1.2e15 \
+      --min-val 1 \
+      --max-val 1 \
       --seed 45 \
       --max-global-steps 10000 \
       --min-epoch 2 \
-      --max-epoch 5 \
-      --optimizers adam sgd_vanilla \
-      --num-experiments 100 \
-      --steps-after-injection 800
+      --max-epoch 2 \
+      --optimizers adam \
+      --num-experiments 1 \
+      --steps-after-injection 300
 
 # Run Experiment with Minimal Parameters (uses random values for unspecified)
 ./shell_scripts/docker_run.sh optimizer \
