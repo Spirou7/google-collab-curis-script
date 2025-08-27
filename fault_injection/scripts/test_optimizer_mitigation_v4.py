@@ -757,7 +757,7 @@ class SequentialOptimizerExperiment:
                         for var_name, m_data in pre_injection_momentum.get('m', {}).items():
                             record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}, max_signed={m_data['max_signed']:.2e}\n")
                             if abs(m_data['max']) > 1e-6:  # Only show values if non-trivial
-                                record(f"    First 5 values: {[f'{v:.2e}' for v in m_data['first_5']]}\n")
+                                record(f"    First 5 values: {m_data['first_5']}\n")
                     
                     # Perform injection
                     record(f"\n🎯 Performing injection at epoch {epoch}, step {step} (global step {global_step})\n")
@@ -872,7 +872,7 @@ class SequentialOptimizerExperiment:
                         for var_name, m_data in post_injection_momentum.get('m', {}).items():
                             record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}, max_signed={m_data['max_signed']:.2e}\n")
                             if abs(m_data['max']) > 1e-6:  # Only show values if non-trivial
-                                record(f"    First 5 values: {[f'{v:.2e}' for v in m_data['first_5']]}\n")
+                                record(f"    First 5 values: {m_data['first_5']}\n")
                             
                             # Check if momentum got corrupted to the right range for SlowDegrade
                             max_m = m_data['max']
