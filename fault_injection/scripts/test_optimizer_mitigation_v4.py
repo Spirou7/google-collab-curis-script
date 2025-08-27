@@ -390,6 +390,20 @@ class SequentialOptimizerExperiment:
             _, bkwd_inputs, bkwd_kernels, bkwd_outputs = back_model.call(
                 man_grad_start, l_inputs, l_kernels, inject=False, inj_args=None
             )
+            
+            # Debug: Check what keys are available
+            if inj_layer not in bkwd_inputs:
+                print(f"Warning: Layer '{inj_layer}' not found in backward model outputs")
+                print(f"Available layers: {list(bkwd_inputs.keys())[:10]}...")  # Show first 10 keys
+                # Try to find a matching layer or use a default
+                if len(bkwd_inputs) > 0:
+                    # Use the first available layer as fallback
+                    fallback_layer = list(bkwd_inputs.keys())[0]
+                    print(f"Using fallback layer: {fallback_layer}")
+                    return bkwd_inputs[fallback_layer], bkwd_kernels[fallback_layer], bkwd_outputs[fallback_layer]
+                else:
+                    raise KeyError(f"No layers available in backward model outputs")
+            
             return bkwd_inputs[inj_layer], bkwd_kernels[inj_layer], bkwd_outputs[inj_layer]
         
         def bkwd_inj_train_step2(iter_inputs, inj_args, inj_flag):
@@ -1160,123 +1174,81 @@ class SequentialOptimizerExperiment:
         ax3.grid(True, alpha=0.3, axis='y')
         ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
         
-        # Plot 4: Individual Optimizer State Variables over time
-        # NEW: Track each variable separately instead of averaging
-        per_variable_data = {}  # {optimizer: {variable_name: {slot_type: [magnitudes_over_time]}}}
-        all_slot_types = set()
-        all_variables = set()
+        # Plot 4: Adam Momentum Values (m and v) over time
+        # Plot the actual momentum values from the beginning to end
+        has_momentum_data = False
         
-        # Debug: Print what data we have
-        print("\n=== Debugging Optimizer State Data ===")
+        # Check if we have momentum data to plot
         for opt_name, result in optimizer_results.items():
-            if 'history' in result:
-                print(f"\n{opt_name}:")
-                if 'detailed_optimizer_states' in result['history']:
-                    print(f"  - Has detailed_optimizer_states: {len(result['history']['detailed_optimizer_states'])} states")
-                    if result['history']['detailed_optimizer_states']:
-                        first_state = result['history']['detailed_optimizer_states'][0]
-                        print(f"  - First state keys: {list(first_state.keys())[:5]}...")  # Show first 5 keys
-                else:
-                    print(f"  - No detailed_optimizer_states")
-                if 'optimizer_state_magnitudes' in result['history']:
-                    print(f"  - Has optimizer_state_magnitudes: {len(result['history']['optimizer_state_magnitudes'])} values")
-                    if result['history']['optimizer_state_magnitudes']:
-                        first_5 = result['history']['optimizer_state_magnitudes'][:5]
-                        print(f"  - First 5 magnitudes: {first_5}")
+            if 'adam' in opt_name.lower() and 'history' in result and 'momentum_values' in result['history']:
+                momentum_history = result['history']['momentum_values']
+                if momentum_history and any(mv for mv in momentum_history if mv):  # Check for non-empty entries
+                    has_momentum_data = True
+                    break
         
-        # Collect per-variable data for each optimizer
-        for opt_name, result in optimizer_results.items():
-            if 'history' in result and 'detailed_optimizer_states' in result['history']:
-                detailed_states = result['history']['detailed_optimizer_states']
-                if detailed_states and len(detailed_states) > 0:
-                    per_variable_data[opt_name] = {}
+        if has_momentum_data:
+            # Plot momentum values for Adam optimizers
+            for opt_idx, (opt_name, result) in enumerate(optimizer_results.items()):
+                if 'adam' in opt_name.lower() and 'history' in result and 'momentum_values' in result['history']:
+                    momentum_history = result['history']['momentum_values']
+                    global_steps = result['history']['global_steps']
                     
-                    # First pass: identify all variables and slot types
-                    for state in detailed_states:
-                        for var_name, slots in state.items():
-                            if var_name != '_iteration' and isinstance(slots, dict):
-                                all_variables.add(var_name)
-                                all_slot_types.update(slots.keys())
-                                if var_name not in per_variable_data[opt_name]:
-                                    per_variable_data[opt_name][var_name] = {}
+                    # Extract max momentum values over time for first variable
+                    max_m_values = []
+                    max_v_values = []
                     
-                    # Second pass: collect magnitude time series for each variable-slot combination
-                    for var_name in per_variable_data[opt_name]:
-                        for slot_type in all_slot_types:
-                            per_variable_data[opt_name][var_name][slot_type] = []
-                            for state in detailed_states:
-                                if var_name in state and isinstance(state[var_name], dict):
-                                    if slot_type in state[var_name]:
-                                        per_variable_data[opt_name][var_name][slot_type].append(state[var_name][slot_type])
-                                    else:
-                                        per_variable_data[opt_name][var_name][slot_type].append(0.0)
-                                else:
-                                    per_variable_data[opt_name][var_name][slot_type].append(0.0)
-        
-        # Plot individual variable-slot combinations
-        line_styles = ['-', '--', '-.', ':']
-        marker_styles = ['o', 's', '^', 'v', 'D', 'p', '*', 'x']
-        
-        # Limit number of variables to display (to avoid overcrowding)
-        MAX_VARIABLES_TO_PLOT = 5  # Show only first 5 variables
-        
-        plot_index = 0
-        has_plotted_data = False
-        
-        print("\n=== Plotting Individual Variable State Data ===")
-        print(f"Slot types found: {all_slot_types}")
-        print(f"Total variables found: {len(all_variables)}")
-        print(f"Plotting first {MAX_VARIABLES_TO_PLOT} variables per optimizer")
-        
-        # Create a color map for better distinction
-        import matplotlib.cm as cm
-        cmap = cm.get_cmap('tab20')  # Use tab20 for more distinct colors
-        
-        for opt_idx, (opt_name, variables) in enumerate(per_variable_data.items()):
-            result = optimizer_results[opt_name]
-            if 'history' in result:
-                # Sort variables by name for consistent ordering
-                sorted_vars = sorted(list(variables.keys()))
-                vars_to_plot = sorted_vars[:MAX_VARIABLES_TO_PLOT]  # Limit number of variables
-                
-                for var_idx, var_name in enumerate(vars_to_plot):
-                    for slot_idx, slot_type in enumerate(sorted(all_slot_types)):
-                        if slot_type in variables[var_name] and variables[var_name][slot_type]:
-                            magnitudes = variables[var_name][slot_type]
-                            steps = result['history']['global_steps'][:len(magnitudes)]
-                            
-                            # Create a shorter variable name for the label
-                            short_var_name = var_name.split('/')[-1] if '/' in var_name else var_name
-                            if len(short_var_name) > 20:
-                                short_var_name = short_var_name[:8] + '...' + short_var_name[-8:]
-                            
-                            # Create label
-                            label = f'{opt_name}-{short_var_name}-{slot_type}'
-                            
-                            # Check if there's any non-zero data
-                            has_nonzero = any(m > 0 for m in magnitudes)
-                            if has_nonzero:  # Only plot if there's actual data
-                                # Use different colors for different optimizers and variables
-                                color_idx = (opt_idx * MAX_VARIABLES_TO_PLOT + var_idx) % 20
-                                line_color = cmap(color_idx / 20.0)
-                                
-                                # Use different line styles for different slot types
-                                line_style = line_styles[slot_idx % len(line_styles)]
-                                
-                                print(f"  Plotting: {label[:50]}... (max={max(magnitudes):.6f})")
-                                
-                                ax4.plot(steps, magnitudes,
-                                        color=line_color,
-                                        label=label if plot_index < 10 else None,  # Limit legend entries
-                                        linewidth=1.5,
-                                        alpha=0.7,
-                                        linestyle=line_style)
-                                plot_index += 1
-                                has_plotted_data = True
-        
-        # If no detailed states, fall back to total magnitude plot
-        if not has_plotted_data:
-            print("\n=== Falling back to total magnitude plot ===")
+                    for step_momentum in momentum_history:
+                        if step_momentum and 'm' in step_momentum:
+                            # Get max |m| across all variables at this step
+                            max_m = 0
+                            for var_data in step_momentum['m'].values():
+                                if isinstance(var_data, dict) and 'max' in var_data:
+                                    max_m = max(max_m, abs(var_data['max']))
+                            max_m_values.append(max_m if max_m > 0 else np.nan)
+                        else:
+                            max_m_values.append(np.nan)
+                        
+                        if step_momentum and 'v' in step_momentum:
+                            # Get max v across all variables at this step
+                            max_v = 0
+                            for var_data in step_momentum['v'].values():
+                                if isinstance(var_data, dict) and 'max' in var_data:
+                                    max_v = max(max_v, var_data['max'])
+                            max_v_values.append(max_v if max_v > 0 else np.nan)
+                        else:
+                            max_v_values.append(np.nan)
+                    
+                    # Plot max |m| values
+                    valid_steps_m = [(s, m) for s, m in zip(global_steps[:len(max_m_values)], max_m_values) if np.isfinite(m)]
+                    if valid_steps_m:
+                        steps_m, values_m = zip(*valid_steps_m)
+                        ax4.plot(steps_m, values_m,
+                                color=colors[opt_idx], label=f'{opt_name} max|m|',
+                                linewidth=2, alpha=0.8, linestyle='-')
+                    
+                    # Plot max v values with dashed line
+                    valid_steps_v = [(s, v) for s, v in zip(global_steps[:len(max_v_values)], max_v_values) if np.isfinite(v)]
+                    if valid_steps_v:
+                        steps_v, values_v = zip(*valid_steps_v)
+                        ax4.plot(steps_v, values_v,
+                                color=colors[opt_idx], label=f'{opt_name} max(v)',
+                                linewidth=1.5, alpha=0.6, linestyle='--')
+            
+            ax4.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
+            ax4.set_xlabel('Training Step')
+            ax4.set_ylabel('Momentum Value')
+            ax4.set_title('Adam Momentum Values (m and v) Throughout Training')
+            ax4.set_yscale('log')
+            ax4.legend(loc='best')
+            ax4.grid(True, alpha=0.3)
+            
+            # Add horizontal lines for SlowDegrade range
+            ax4.axhline(y=2.6e8, color='green', linestyle=':', alpha=0.5, label='SlowDegrade min')
+            ax4.axhline(y=1.1e19, color='orange', linestyle=':', alpha=0.5, label='SlowDegrade max')
+            
+        else:
+            # Fallback to optimizer state magnitudes if no momentum data
+            print("\n=== No momentum data found, using optimizer state magnitudes ===")
             for i, (opt_name, result) in enumerate(optimizer_results.items()):
                 if 'history' in result and 'optimizer_state_magnitudes' in result['history']:
                     history = result['history']
@@ -1285,60 +1257,16 @@ class SequentialOptimizerExperiment:
                         magnitudes = history['optimizer_state_magnitudes']
                         # Filter out inf/nan values for display
                         filtered_magnitudes = [m if np.isfinite(m) else np.nan for m in magnitudes]
-                        finite_mags = [m for m in magnitudes if np.isfinite(m)]
-                        max_val = max(finite_mags) if finite_mags else 0
-                        print(f"{opt_name}: {len(magnitudes)} magnitude values, max={max_val:.6f}, inf_count={sum(1 for m in magnitudes if np.isinf(m))}")
                         ax4.plot(steps, filtered_magnitudes,
                                 color=colors[i], label=opt_name,
                                 linewidth=2, alpha=0.8)
-                        has_plotted_data = True
-        
-        # Only add injection line if we have data to plot
-        if has_plotted_data:
+            
             ax4.axvline(x=injection_step, color='red', linestyle='--', label='Injection', alpha=0.7)
             ax4.set_xlabel('Training Step')
-            ax4.set_ylabel('Average State Variable Magnitude')
-            ax4.set_title('Individual Optimizer State Variables Over Time')
-            
-            # Set X-axis limits to focus on the injection region
-            if injection_step is not None:
-                # Show from 10 steps before injection to steps_after_injection after
-                ax4.set_xlim(max(0, injection_step - 10), injection_step + self.steps_after_injection + 10)
-            
-            # Try to set appropriate Y-axis scale
-            all_y_values = []
-            for line in ax4.get_lines():
-                y_data = line.get_ydata()
-                if len(y_data) > 0:
-                    all_y_values.extend(y_data)
-            
-            if all_y_values:
-                # Filter out zeros, NaNs, and Infs for scale calculation
-                valid_values = [v for v in all_y_values if v > 0 and np.isfinite(v)]
-                if valid_values:
-                    y_min = min(valid_values) * 0.5
-                    y_max = max(valid_values) * 2.0
-                    
-                    # Ensure y_min and y_max are finite
-                    if np.isfinite(y_min) and np.isfinite(y_max):
-                        ax4.set_ylim(y_min, y_max)
-                        # Use log scale if range is large
-                        if y_max / y_min > 100:
-                            try:
-                                ax4.set_yscale('log')
-                            except:
-                                pass  # Keep linear scale if log scale fails
-                    else:
-                        # Fallback to auto scaling
-                        print("Warning: Could not set y-axis limits due to non-finite values")
-            
-            ax4.legend(loc='best', fontsize=8, ncol=2)  # Multi-column legend for many lines
+            ax4.set_ylabel('Optimizer State Magnitude')
+            ax4.set_title('Optimizer State Magnitudes Over Time')
+            ax4.legend(loc='best')
             ax4.grid(True, alpha=0.3)
-        else:
-            # If still no data, show a message
-            ax4.text(0.5, 0.5, 'No optimizer state data available\n(Check if optimizers have internal states)',
-                    transform=ax4.transAxes, ha='center', va='center', fontsize=12)
-            ax4.set_title('Individual Optimizer State Variables Over Time')
         
         # Plot 5: Injection details
         ax5.axis('off')
@@ -1381,119 +1309,81 @@ Post-Injection Results:
         ax5.text(0.1, 0.9, injection_text, transform=ax5.transAxes,
                 fontsize=10, verticalalignment='top', fontfamily='monospace')
         
-        # Plot 6: Detailed state tracking (per-variable, per-slot)
-        # Analyze detailed states to find which slots and variables to plot
-        slot_types_found = set()
-        variable_groups = {}  # Group variables by layer type
+        # Plot 6: Momentum decay visualization (showing 0.9^k decay pattern)
+        # Focus on Adam momentum decay after injection
+        has_adam_decay_data = False
         
         for opt_name, result in optimizer_results.items():
-            if 'history' in result and 'detailed_optimizer_states' in result['history']:
-                detailed_states = result['history']['detailed_optimizer_states']
-                if detailed_states and len(detailed_states) > 0:
-                    # Analyze first state to understand structure
-                    first_state = detailed_states[0]
-                    for var_name, slots in first_state.items():
-                        if var_name != '_iteration' and isinstance(slots, dict):
-                            # Group variables by layer type (conv, dense, etc)
-                            if 'conv' in var_name.lower():
-                                group = 'conv'
-                            elif 'dense' in var_name.lower() or 'fc' in var_name.lower():
-                                group = 'dense'
-                            elif 'batch' in var_name.lower() or 'bn' in var_name.lower():
-                                group = 'batchnorm'
-                            else:
-                                group = 'other'
-                            
-                            if group not in variable_groups:
-                                variable_groups[group] = set()
-                            variable_groups[group].add(var_name)
-                            
-                            # Track slot types
-                            slot_types_found.update(slots.keys())
-        
-        # Plot aggregated state magnitudes by layer type and slot type
-        if slot_types_found and variable_groups:
-            # Prepare data for plotting
-            plot_data = {}  # {optimizer: {slot_type: {layer_group: [magnitudes]}}}
-            
-            for opt_name, result in optimizer_results.items():
-                if 'history' in result and 'detailed_optimizer_states' in result['history']:
-                    detailed_states = result['history']['detailed_optimizer_states']
-                    steps = result['history']['global_steps'][:len(detailed_states)]
+            if 'adam' in opt_name.lower() and 'history' in result and 'momentum_values' in result['history']:
+                momentum_history = result['history']['momentum_values']
+                global_steps = result['history']['global_steps']
+                
+                # Find injection index
+                inj_idx = None
+                for idx, step in enumerate(global_steps):
+                    if step == injection_step:
+                        inj_idx = idx
+                        break
+                
+                if inj_idx is not None and inj_idx < len(momentum_history) - 10:  # Need some post-injection data
+                    has_adam_decay_data = True
                     
-                    plot_data[opt_name] = {}
-                    for slot_type in slot_types_found:
-                        plot_data[opt_name][slot_type] = {group: [] for group in variable_groups}
+                    # Extract post-injection momentum values
+                    post_inj_steps = global_steps[inj_idx:]
+                    post_inj_momentum = momentum_history[inj_idx:]
+                    
+                    # Get initial (at injection) max momentum
+                    initial_momentum = {}
+                    if post_inj_momentum[0] and 'm' in post_inj_momentum[0]:
+                        for var_name, var_data in post_inj_momentum[0]['m'].items():
+                            if isinstance(var_data, dict) and 'max' in var_data:
+                                initial_momentum[var_name] = abs(var_data['max'])
+                    
+                    # Track decay for variables with significant initial momentum
+                    decay_data = []
+                    for step_idx, step_momentum in enumerate(post_inj_momentum[:50]):  # First 50 steps after injection
+                        if step_momentum and 'm' in step_momentum:
+                            max_m = 0
+                            for var_name, var_data in step_momentum['m'].items():
+                                if isinstance(var_data, dict) and 'max' in var_data:
+                                    if var_name in initial_momentum and initial_momentum[var_name] > 1e6:
+                                        max_m = max(max_m, abs(var_data['max']))
+                            if max_m > 0:
+                                decay_data.append((post_inj_steps[step_idx], max_m))
+                    
+                    if decay_data:
+                        steps_decay, values_decay = zip(*decay_data)
                         
-                        for state in detailed_states:
-                            # Aggregate magnitudes by group
-                            group_mags = {group: 0.0 for group in variable_groups}
-                            group_counts = {group: 0 for group in variable_groups}
-                            
-                            for var_name, slots in state.items():
-                                if var_name != '_iteration' and isinstance(slots, dict):
-                                    # Determine group
-                                    if 'conv' in var_name.lower():
-                                        group = 'conv'
-                                    elif 'dense' in var_name.lower() or 'fc' in var_name.lower():
-                                        group = 'dense'
-                                    elif 'batch' in var_name.lower() or 'bn' in var_name.lower():
-                                        group = 'batchnorm'
-                                    else:
-                                        group = 'other'
-                                    
-                                    if slot_type in slots:
-                                        group_mags[group] += slots[slot_type]
-                                        group_counts[group] += 1
-                            
-                            # Store averaged magnitudes
-                            for group in variable_groups:
-                                if group_counts[group] > 0:
-                                    plot_data[opt_name][slot_type][group].append(
-                                        group_mags[group] / group_counts[group]
-                                    )
-                                else:
-                                    plot_data[opt_name][slot_type][group].append(0.0)
-            
-            # Create stacked plot showing slot types
-            slot_list = sorted(list(slot_types_found))
-            if len(slot_list) > 0:
-                # Plot first slot type (usually momentum or m)
-                primary_slot = slot_list[0] if slot_list else None
-                if primary_slot:
-                    for i, opt_name in enumerate(optimizer_results.keys()):
-                        if opt_name in plot_data and primary_slot in plot_data[opt_name]:
-                            # Plot conv layer magnitudes
-                            if 'conv' in plot_data[opt_name][primary_slot]:
-                                mags = plot_data[opt_name][primary_slot]['conv']
-                                # Filter out non-finite values
-                                if mags:
-                                    filtered_mags = [m if np.isfinite(m) else np.nan for m in mags]
-                                    if any(np.isfinite(m) and m > 0 for m in filtered_mags):
-                                        steps = result['history']['global_steps'][:len(filtered_mags)]
-                                        ax6.plot(steps, filtered_mags,
-                                                color=colors[i], label=f'{opt_name} ({primary_slot})',
-                                                linewidth=2, alpha=0.8)
-                    
-                    ax6.axvline(x=injection_step, color='red', linestyle='--', alpha=0.7)
-                    ax6.set_xlabel('Training Step')
-                    ax6.set_ylabel(f'Average {primary_slot} Magnitude')
-                    ax6.set_title(f'Detailed State: {primary_slot} in Conv Layers')
-                    ax6.legend(loc='best')
-                    ax6.grid(True, alpha=0.3)
-                    ax6.set_yscale('log')
-                else:
-                    ax6.axis('off')
-                    ax6.text(0.5, 0.5, 'No optimizer state slots found\n(SGD_vanilla has no internal state)',
-                            transform=ax6.transAxes, ha='center', va='center', fontsize=12)
-            else:
-                ax6.axis('off')
-                ax6.text(0.5, 0.5, 'No detailed state data available', 
-                        transform=ax6.transAxes, ha='center', va='center')
-        else:
+                        # Plot actual decay
+                        ax6.plot([s - injection_step for s in steps_decay], values_decay,
+                                'o-', color=colors[0], label=f'{opt_name} actual decay',
+                                markersize=4, linewidth=2, alpha=0.8)
+                        
+                        # Plot theoretical 0.9^k decay
+                        if initial_momentum:
+                            max_initial = max(initial_momentum.values())
+                            theoretical_steps = range(0, min(50, len(post_inj_steps)))
+                            theoretical_values = [max_initial * (0.9 ** k) for k in theoretical_steps]
+                            ax6.plot(theoretical_steps, theoretical_values,
+                                    '--', color='gray', label='Theoretical 0.9^k decay',
+                                    linewidth=2, alpha=0.6)
+                        
+                        ax6.set_xlabel('Steps After Injection')
+                        ax6.set_ylabel('Max |Momentum| Value')
+                        ax6.set_title('Adam Momentum Decay After Injection (0.9^k pattern)')
+                        ax6.set_yscale('log')
+                        ax6.legend(loc='best')
+                        ax6.grid(True, alpha=0.3)
+                        
+                        # Add horizontal lines for SlowDegrade range
+                        ax6.axhline(y=2.6e8, color='green', linestyle=':', alpha=0.5, label='SlowDegrade min')
+                        ax6.axhline(y=1.1e19, color='orange', linestyle=':', alpha=0.5)
+                        break  # Only plot for first Adam optimizer
+        
+        if not has_adam_decay_data:
             ax6.axis('off')
-            ax6.text(0.5, 0.5, 'No detailed optimizer state tracking available',
-                    transform=ax6.transAxes, ha='center', va='center')
+            ax6.text(0.5, 0.5, 'No Adam momentum decay data available',
+                    transform=ax6.transAxes, ha='center', va='center', fontsize=12)
         
         plt.tight_layout()
         plot_path = os.path.join(experiment_dir, 'comparison_plots.png')
