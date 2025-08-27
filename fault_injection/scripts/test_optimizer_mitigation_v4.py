@@ -455,23 +455,14 @@ class SequentialOptimizerExperiment:
             gradients = manual_gradients + golden_gradients[golden_grad_idx[injection_params['model']]:]
             
             # IMPORTANT: Backward injection behavior
-            # The current implementation saves weights before applying corrupted gradients,
-            # then restores them. This means ONLY the optimizer state gets corrupted,
-            # not the model weights themselves. This tests optimizer resilience specifically.
-            
-            # Save current model weights before applying gradients
-            saved_weights = [tf.Variable(w) for w in model.trainable_variables]
+            # Apply corrupted gradients to BOTH optimizer state AND model weights
+            # This allows the full SlowDegrade cascade effect to occur
             
             # Apply gradients - this updates BOTH optimizer state AND model weights
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
             
-            # Restore original weights (but optimizer state remains corrupted)
-            # This isolates the effect to optimizer corruption only
-            for var, saved_weight in zip(model.trainable_variables, saved_weights):
-                var.assign(saved_weight)
-            
-            # NOTE: To make backward injection more impactful, comment out the weight
-            # restoration above. This would let corrupted gradients directly affect weights.
+            # NOTE: Weight restoration has been removed to allow corrupted gradients
+            # to directly affect weights, enabling the SlowDegrade phenomenon
             
             # Calculate single-step accuracy
             correct_predictions = tf.equal(tf.argmax(predictions, axis=1), tf.cast(labels, tf.int64))
