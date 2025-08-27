@@ -222,6 +222,11 @@ class SequentialOptimizerExperiment:
                 end_learning_rate=0.0001
             )
         
+        # SLOWER DECAY FACTORS FOR SLOWDEGRADE
+        # Paper suggests 0.999 or 0.9999 for sustained fault effects
+        ADAM_BETA1 = 0.999   # Default is 0.9 - this is 10x slower decay
+        ADAM_BETA2 = 0.9999  # Default is 0.999 - this is 10x slower decay
+        
         # Create optimizer based on name
         optimizer_map = {
             'adam': tf.keras.optimizers.Adam,
@@ -238,27 +243,55 @@ class SequentialOptimizerExperiment:
         if optimizer_name.lower() == 'adamw':
             try:
                 if hasattr(tf.keras.optimizers, 'AdamW'):
-                    return tf.keras.optimizers.AdamW(learning_rate=lr_schedule)
+                    return tf.keras.optimizers.AdamW(
+                        learning_rate=lr_schedule,
+                        beta_1=ADAM_BETA1,
+                        beta_2=ADAM_BETA2
+                    )
                 elif hasattr(tf.keras.optimizers, 'experimental') and hasattr(tf.keras.optimizers.experimental, 'AdamW'):
-                    return tf.keras.optimizers.experimental.AdamW(learning_rate=lr_schedule)
+                    return tf.keras.optimizers.experimental.AdamW(
+                        learning_rate=lr_schedule,
+                        beta_1=ADAM_BETA1,
+                        beta_2=ADAM_BETA2
+                    )
             except:
                 pass
-            # Fallback to Adam
-            return tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+            # Fallback to Adam with slow decay
+            return tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule,
+                beta_1=ADAM_BETA1,
+                beta_2=ADAM_BETA2
+            )
         
         optimizer_class = optimizer_map.get(optimizer_name.lower(), tf.keras.optimizers.Adam)
         
         # Create optimizer with appropriate parameters
-        if optimizer_name.lower() == 'sgd':
-            return optimizer_class(learning_rate=lr_schedule, momentum=0.9)
+        if optimizer_name.lower() == 'adam':  # EXPLICIT ADAM HANDLING
+            return optimizer_class(
+                learning_rate=lr_schedule,
+                beta_1=ADAM_BETA1,   # Slow decay for SlowDegrade (default: 0.9)
+                beta_2=ADAM_BETA2    # Very slow decay (default: 0.999)
+            )
+        elif optimizer_name.lower() == 'nadam':  # Nadam also uses beta values
+            return optimizer_class(
+                learning_rate=lr_schedule,
+                beta_1=ADAM_BETA1,
+                beta_2=ADAM_BETA2
+            )
+        elif optimizer_name.lower() == 'sgd':
+            # For SlowDegrade experiments, use higher momentum to sustain faults
+            return optimizer_class(learning_rate=lr_schedule, momentum=0.999)
         elif optimizer_name.lower() == 'sgd_vanilla':
             # Vanilla SGD with NO momentum (stateless)
             return optimizer_class(learning_rate=lr_schedule, momentum=0.0)
         elif optimizer_name.lower() == 'rmsprop':
-            return optimizer_class(learning_rate=lr_schedule, rho=0.9)
+            # RMSprop uses 'rho' as its decay factor - increase for slower decay
+            return optimizer_class(learning_rate=lr_schedule, rho=0.999)
         elif optimizer_name.lower() == 'adadelta':
-            return optimizer_class(learning_rate=lr_schedule, rho=0.95)
+            # Increase rho for much slower decay
+            return optimizer_class(learning_rate=lr_schedule, rho=0.9999)
         else:
+            # Default fallback - shouldn't reach here for Adam anymore
             return optimizer_class(learning_rate=lr_schedule)
     
     def clear_optimizer_states(self, optimizer):
@@ -421,6 +454,11 @@ class SequentialOptimizerExperiment:
             
             gradients = manual_gradients + golden_gradients[golden_grad_idx[injection_params['model']]:]
             
+            # IMPORTANT: Backward injection behavior
+            # The current implementation saves weights before applying corrupted gradients,
+            # then restores them. This means ONLY the optimizer state gets corrupted,
+            # not the model weights themselves. This tests optimizer resilience specifically.
+            
             # Save current model weights before applying gradients
             saved_weights = [tf.Variable(w) for w in model.trainable_variables]
             
@@ -428,8 +466,12 @@ class SequentialOptimizerExperiment:
             model.optimizer.apply_gradients(list(zip(gradients, model.trainable_variables)))
             
             # Restore original weights (but optimizer state remains corrupted)
+            # This isolates the effect to optimizer corruption only
             for var, saved_weight in zip(model.trainable_variables, saved_weights):
                 var.assign(saved_weight)
+            
+            # NOTE: To make backward injection more impactful, comment out the weight
+            # restoration above. This would let corrupted gradients directly affect weights.
             
             # Calculate single-step accuracy
             correct_predictions = tf.equal(tf.argmax(predictions, axis=1), tf.cast(labels, tf.int64))
@@ -583,80 +625,70 @@ class SequentialOptimizerExperiment:
                 for i, opt_var in enumerate(opt_vars[:10]):  # Show first 10
                     print(f"    Var {i}: {opt_var.name}, shape: {opt_var.shape}, dtype: {opt_var.dtype}")
             
-            # Create a mapping from trainable variables to their momentum slots
-            for var_idx, var in enumerate(model.trainable_variables[:5]):  # Limit to first 5 for readability
-                var_name = var.name.split('/')[-1].replace(':0', '')
-                if len(var_name) > 30:
-                    var_name = f"var_{var_idx}_{var_name[:15]}...{var_name[-10:]}"
+            # Direct approach: parse optimizer variable names
+            for opt_var in opt_vars:
+                opt_var_name = opt_var.name
                 
-                # Find corresponding momentum variables in optimizer.variables()
-                # Adam stores them with names like 'Adam/m/var_name:0' and 'Adam/v/var_name:0'
-                for opt_var in opt_vars:
-                    opt_var_name = opt_var.name
+                # Skip iteration counter
+                if 'iteration' in opt_var_name.lower():
+                    continue
                     
-                    # Check if this is the m (momentum) slot for our variable
-                    if '/m/' in opt_var_name or '_m:' in opt_var_name:
-                        # Try to match by shape and position
-                        if opt_var.shape == var.shape:
-                            # This is likely the momentum for this variable
-                            m_values = opt_var.numpy().flatten()
-                            if var_name not in momentum_values['m']:  # Only set if not already found
-                                momentum_values['m'][var_name] = {
-                                    'mean': float(np.mean(np.abs(m_values))),
-                                    'max': float(np.max(np.abs(m_values))),
-                                    'min': float(np.min(m_values)),
-                                    'max_signed': float(np.max(m_values)),
-                                    'first_5': m_values[:5].tolist() if len(m_values) >= 5 else m_values.tolist()
-                                }
+                # Extract variable type from name
+                if '/m/' in opt_var_name:
+                    # This is a momentum variable
+                    # Extract the base variable name
+                    parts = opt_var_name.split('/')
+                    # Find the part after 'm/'
+                    var_key = '/'.join(parts[2:]).replace(':0', '')  # Skip 'Adam/m/' prefix
+                    if len(var_key) > 30:
+                        var_key = var_key[:15] + '...' + var_key[-10:]
                     
-                    # Check if this is the v (variance) slot for our variable
-                    elif '/v/' in opt_var_name or '_v:' in opt_var_name:
-                        if opt_var.shape == var.shape:
-                            v_values = opt_var.numpy().flatten()
-                            if var_name not in momentum_values['v']:  # Only set if not already found
-                                momentum_values['v'][var_name] = {
-                                    'mean': float(np.mean(v_values)),
-                                    'max': float(np.max(v_values)),
-                                    'first_5': v_values[:5].tolist() if len(v_values) >= 5 else v_values.tolist()
-                                }
+                    m_values = opt_var.numpy().flatten()
+                    momentum_values['m'][var_key] = {
+                        'mean': float(np.mean(np.abs(m_values))),
+                        'max': float(np.max(np.abs(m_values))),
+                        'min': float(np.min(m_values)),
+                        'max_signed': float(np.max(m_values)),
+                        'first_5': [f'{v:.2e}' for v in m_values[:5]] if len(m_values) >= 5 else [f'{v:.2e}' for v in m_values]
+                    }
+                    
+                elif '/v/' in opt_var_name:
+                    # This is a variance variable
+                    parts = opt_var_name.split('/')
+                    var_key = '/'.join(parts[2:]).replace(':0', '')  # Skip 'Adam/v/' prefix
+                    if len(var_key) > 30:
+                        var_key = var_key[:15] + '...' + var_key[-10:]
+                    
+                    v_values = opt_var.numpy().flatten()
+                    momentum_values['v'][var_key] = {
+                        'mean': float(np.mean(v_values)),
+                        'max': float(np.max(v_values)),
+                        'first_5': [f'{v:.2e}' for v in v_values[:5]] if len(v_values) >= 5 else [f'{v:.2e}' for v in v_values]
+                    }
             
-            # If we couldn't find momentum variables by name matching, try by index
-            # Adam typically stores variables in order: [iterations, m_vars..., v_vars...]
-            if not momentum_values['m'] and len(opt_vars) > 1:
-                # Skip first variable (iteration counter)
-                num_trainable = min(5, len(model.trainable_variables))
-                
-                # Assume m variables come first after iteration counter
-                for i in range(num_trainable):
-                    if i + 1 < len(opt_vars):
-                        var = model.trainable_variables[i]
-                        var_name = f"var_{i}"
-                        m_var = opt_vars[i + 1]  # +1 to skip iteration counter
-                        
-                        if m_var.shape == var.shape and m_var.dtype in [tf.float32, tf.float16]:
-                            m_values = m_var.numpy().flatten()
-                            momentum_values['m'][var_name] = {
-                                'mean': float(np.mean(np.abs(m_values))),
-                                'max': float(np.max(np.abs(m_values))),
-                                'min': float(np.min(m_values)),
-                                'max_signed': float(np.max(m_values)),
-                                'first_5': m_values[:5].tolist() if len(m_values) >= 5 else m_values.tolist()
-                            }
-                    
-                    # v variables typically come after all m variables
-                    v_idx = 1 + num_trainable + i  # iteration + all m vars + current v index
-                    if v_idx < len(opt_vars):
-                        var = model.trainable_variables[i]
-                        var_name = f"var_{i}"
-                        v_var = opt_vars[v_idx]
-                        
-                        if v_var.shape == var.shape and v_var.dtype in [tf.float32, tf.float16]:
-                            v_values = v_var.numpy().flatten()
-                            momentum_values['v'][var_name] = {
-                                'mean': float(np.mean(v_values)),
-                                'max': float(np.max(v_values)),
-                                'first_5': v_values[:5].tolist() if len(v_values) >= 5 else v_values.tolist()
-                            }
+            # If we want to focus on specific important variables, filter them
+            # For example, look for kernel, bias, gamma, beta
+            important_keys = ['kernel', 'bias', 'gamma', 'beta']
+            filtered_m = {}
+            filtered_v = {}
+            
+            for key in momentum_values['m']:
+                for important in important_keys:
+                    if important in key.lower():
+                        filtered_m[important] = momentum_values['m'][key]
+                        break
+            
+            for key in momentum_values['v']:
+                for important in important_keys:
+                    if important in key.lower():
+                        filtered_v[important] = momentum_values['v'][key]
+                        break
+            
+            # If we found filtered results, use them for cleaner output
+            if filtered_m:
+                momentum_values['m'] = filtered_m
+            if filtered_v:
+                momentum_values['v'] = filtered_v
             
             return momentum_values
         
@@ -887,20 +919,20 @@ class SequentialOptimizerExperiment:
                                     initial_max = post_injection_momentum['m'][var_name]['max']
                                     current_max = m_data['max']
                                     
-                                    # Calculate expected decay (0.9^steps for Adam default beta1)
-                                    expected = initial_max * (0.9 ** steps_since_injection)
+                                    # Calculate expected decay (0.999^steps for our SlowDegrade beta1)
+                                    expected = initial_max * (0.999 ** steps_since_injection)
                                     
                                     record(f"  {var_name}:\n")
                                     record(f"    Current max(|m|): {current_max:.2e}\n")
-                                    record(f"    Expected (0.9^{steps_since_injection}): {expected:.2e}\n")
+                                    record(f"    Expected (0.999^{steps_since_injection}): {expected:.2e}\n")
                                     
                                     # Check if actual decay matches theoretical
                                     if initial_max > 1e6:  # Only check if initial was substantial
                                         ratio = current_max / expected if expected > 0 else float('inf')
                                         if 0.5 <= ratio <= 2.0:
-                                            record(f"    ✓ Decay following ~0.9^k pattern (ratio: {ratio:.2f})\n")
+                                            record(f"    ✓ Decay following ~0.999^k pattern (ratio: {ratio:.2f})\n")
                                         else:
-                                            record(f"    ✗ Decay NOT following 0.9^k pattern (ratio: {ratio:.2f})\n")
+                                            record(f"    ✗ Decay NOT following 0.999^k pattern (ratio: {ratio:.2f})\n")
                     
                     # Check if we're within the recovery search limit
                     if steps_since_injection <= recovery_search_limit:
@@ -1359,18 +1391,18 @@ Post-Injection Results:
                                 'o-', color=colors[0], label=f'{opt_name} actual decay',
                                 markersize=4, linewidth=2, alpha=0.8)
                         
-                        # Plot theoretical 0.9^k decay
+                        # Plot theoretical 0.999^k decay (with our SlowDegrade beta1)
                         if initial_momentum:
                             max_initial = max(initial_momentum.values())
                             theoretical_steps = range(0, min(50, len(post_inj_steps)))
-                            theoretical_values = [max_initial * (0.9 ** k) for k in theoretical_steps]
+                            theoretical_values = [max_initial * (0.999 ** k) for k in theoretical_steps]
                             ax6.plot(theoretical_steps, theoretical_values,
-                                    '--', color='gray', label='Theoretical 0.9^k decay',
+                                    '--', color='gray', label='Theoretical 0.999^k decay',
                                     linewidth=2, alpha=0.6)
                         
                         ax6.set_xlabel('Steps After Injection')
                         ax6.set_ylabel('Max |Momentum| Value')
-                        ax6.set_title('Adam Momentum Decay After Injection (0.9^k pattern)')
+                        ax6.set_title('Adam Momentum Decay After Injection (0.999^k pattern)')
                         ax6.set_yscale('log')
                         ax6.legend(loc='best')
                         ax6.grid(True, alpha=0.3)
