@@ -604,7 +604,7 @@ class SequentialOptimizerExperiment:
             
             return detailed_state
         
-        def log_adam_momentum_values():
+        def log_adam_momentum_values(show_all=False):
             """Log actual m and v values for Adam optimizer."""
             if 'adam' not in optimizer_name.lower():
                 return {}
@@ -625,6 +625,12 @@ class SequentialOptimizerExperiment:
                 for i, opt_var in enumerate(opt_vars[:10]):  # Show first 10
                     print(f"    Var {i}: {opt_var.name}, shape: {opt_var.shape}, dtype: {opt_var.dtype}")
             
+            # Track max values across ALL variables
+            max_m_overall = 0
+            max_v_overall = 0
+            max_m_var_name = None
+            max_v_var_name = None
+            
             # Direct approach: parse optimizer variable names
             for opt_var in opt_vars:
                 opt_var_name = opt_var.name
@@ -644,12 +650,37 @@ class SequentialOptimizerExperiment:
                         var_key = var_key[:15] + '...' + var_key[-10:]
                     
                     m_values = opt_var.numpy().flatten()
+                    
+                    # Check for inf/nan
+                    has_inf = np.any(np.isinf(m_values))
+                    has_nan = np.any(np.isnan(m_values))
+                    
+                    if has_inf or has_nan:
+                        max_abs_m = float('inf') if has_inf else float('nan')
+                    else:
+                        max_abs_m = float(np.max(np.abs(m_values))) if len(m_values) > 0 else 0
+                    
+                    # Track overall maximum (including inf/nan)
+                    if not np.isfinite(max_m_overall) or max_abs_m > max_m_overall:
+                        max_m_overall = max_abs_m
+                        max_m_var_name = var_key
+                    
+                    # Compute statistics, handling inf/nan gracefully
+                    mean_val = float(np.mean(np.abs(m_values[np.isfinite(m_values)]))) if np.any(np.isfinite(m_values)) else float('nan')
+                    min_val = float(np.min(m_values[np.isfinite(m_values)])) if np.any(np.isfinite(m_values)) else float('nan')
+                    max_signed = float(np.max(m_values[np.isfinite(m_values)])) if np.any(np.isfinite(m_values)) else float('nan')
+                    
                     momentum_values['m'][var_key] = {
-                        'mean': float(np.mean(np.abs(m_values))),
-                        'max': float(np.max(np.abs(m_values))),
-                        'min': float(np.min(m_values)),
-                        'max_signed': float(np.max(m_values)),
-                        'first_5': [f'{v:.2e}' for v in m_values[:5]] if len(m_values) >= 5 else [f'{v:.2e}' for v in m_values]
+                        'mean': mean_val,
+                        'max': max_abs_m,
+                        'min': min_val,
+                        'max_signed': max_signed,
+                        'first_5': [f'{v:.2e}' if np.isfinite(v) else 'inf' if np.isinf(v) else 'nan' 
+                                   for v in m_values[:5]] if len(m_values) >= 5 else 
+                                   [f'{v:.2e}' if np.isfinite(v) else 'inf' if np.isinf(v) else 'nan' 
+                                   for v in m_values],
+                        'has_inf': has_inf,
+                        'has_nan': has_nan
                     }
                     
                 elif '/v/' in opt_var_name:
@@ -660,35 +691,73 @@ class SequentialOptimizerExperiment:
                         var_key = var_key[:15] + '...' + var_key[-10:]
                     
                     v_values = opt_var.numpy().flatten()
+                    
+                    # Check for inf/nan
+                    has_inf = np.any(np.isinf(v_values))
+                    has_nan = np.any(np.isnan(v_values))
+                    
+                    if has_inf or has_nan:
+                        max_v = float('inf') if has_inf else float('nan')
+                    else:
+                        max_v = float(np.max(v_values)) if len(v_values) > 0 else 0
+                    
+                    # Track overall maximum (including inf/nan)
+                    if not np.isfinite(max_v_overall) or max_v > max_v_overall:
+                        max_v_overall = max_v
+                        max_v_var_name = var_key
+                    
+                    # Compute statistics, handling inf/nan gracefully
+                    mean_val = float(np.mean(v_values[np.isfinite(v_values)])) if np.any(np.isfinite(v_values)) else float('nan')
+                    
                     momentum_values['v'][var_key] = {
-                        'mean': float(np.mean(v_values)),
-                        'max': float(np.max(v_values)),
-                        'first_5': [f'{v:.2e}' for v in v_values[:5]] if len(v_values) >= 5 else [f'{v:.2e}' for v in v_values]
+                        'mean': mean_val,
+                        'max': max_v,
+                        'first_5': [f'{v:.2e}' if np.isfinite(v) else 'inf' if np.isinf(v) else 'nan' 
+                                   for v in v_values[:5]] if len(v_values) >= 5 else 
+                                   [f'{v:.2e}' if np.isfinite(v) else 'inf' if np.isinf(v) else 'nan' 
+                                   for v in v_values],
+                        'has_inf': has_inf,
+                        'has_nan': has_nan
                     }
             
-            # If we want to focus on specific important variables, filter them
-            # For example, look for kernel, bias, gamma, beta
-            important_keys = ['kernel', 'bias', 'gamma', 'beta']
-            filtered_m = {}
-            filtered_v = {}
+            # Add overall max info
+            momentum_values['_max_info'] = {
+                'max_m_overall': max_m_overall,
+                'max_m_var': max_m_var_name,
+                'max_v_overall': max_v_overall,
+                'max_v_var': max_v_var_name
+            }
             
-            for key in momentum_values['m']:
-                for important in important_keys:
-                    if important in key.lower():
-                        filtered_m[important] = momentum_values['m'][key]
-                        break
-            
-            for key in momentum_values['v']:
-                for important in important_keys:
-                    if important in key.lower():
-                        filtered_v[important] = momentum_values['v'][key]
-                        break
-            
-            # If we found filtered results, use them for cleaner output
-            if filtered_m:
-                momentum_values['m'] = filtered_m
-            if filtered_v:
-                momentum_values['v'] = filtered_v
+            # If not showing all, filter to important variables + the ones with max values
+            if not show_all:
+                # For example, look for kernel, bias, gamma, beta
+                important_keys = ['kernel', 'bias', 'gamma', 'beta']
+                filtered_m = {}
+                filtered_v = {}
+                
+                # Always include the variable with the maximum value
+                if max_m_var_name and max_m_var_name in momentum_values['m']:
+                    filtered_m['MAX: ' + max_m_var_name] = momentum_values['m'][max_m_var_name]
+                if max_v_var_name and max_v_var_name in momentum_values['v']:
+                    filtered_v['MAX: ' + max_v_var_name] = momentum_values['v'][max_v_var_name]
+                
+                for key in momentum_values['m']:
+                    for important in important_keys:
+                        if important in key.lower() and key != max_m_var_name:
+                            filtered_m[important] = momentum_values['m'][key]
+                            break
+                
+                for key in momentum_values['v']:
+                    for important in important_keys:
+                        if important in key.lower() and key != max_v_var_name:
+                            filtered_v[important] = momentum_values['v'][key]
+                            break
+                
+                # If we found filtered results, use them for cleaner output
+                if filtered_m:
+                    momentum_values['m'] = filtered_m
+                if filtered_v:
+                    momentum_values['v'] = filtered_v
             
             return momentum_values
         
@@ -869,19 +938,40 @@ class SequentialOptimizerExperiment:
                     post_injection_momentum = log_adam_momentum_values()
                     if post_injection_momentum:
                         record(f"\n📊 Post-injection Adam momentum values:\n")
-                        for var_name, m_data in post_injection_momentum.get('m', {}).items():
-                            record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}, max_signed={m_data['max_signed']:.2e}\n")
-                            if abs(m_data['max']) > 1e-6:  # Only show values if non-trivial
-                                record(f"    First 5 values: {m_data['first_5']}\n")
+                        
+                        # First show the OVERALL maximum across ALL variables
+                        max_info = post_injection_momentum.get('_max_info', {})
+                        if max_info:
+                            max_m_val = max_info.get('max_m_overall', 0)
+                            max_m_var = max_info.get('max_m_var', 'unknown')
+                            max_v_val = max_info.get('max_v_overall', 0)
+                            max_v_var = max_info.get('max_v_var', 'unknown')
                             
-                            # Check if momentum got corrupted to the right range for SlowDegrade
-                            max_m = m_data['max']
-                            if 2.6e8 <= max_m <= 1.1e19:
-                                record(f"  ✅ {var_name} momentum in SlowDegrade range! ({max_m:.2e})\n")
-                            elif max_m > 1.1e19:
-                                record(f"  ⚠️ {var_name} momentum too large for SlowDegrade (>{1.1e19}, actual: {max_m:.2e})\n")
-                            elif max_m > 1e6:  # Only warn if there's substantial momentum
-                                record(f"  ❌ {var_name} momentum below SlowDegrade range (<2.6e8, actual: {max_m:.2e})\n")
+                            record(f"\n🔥 MAXIMUM VALUES ACROSS ALL VARIABLES:\n")
+                            record(f"  Max |m|: {max_m_val:.2e} in '{max_m_var}'\n")
+                            record(f"  Max v: {max_v_val:.2e} in '{max_v_var}'\n")
+                            
+                            # Check if max momentum is in SlowDegrade range
+                            if 2.6e8 <= max_m_val <= 1.1e19:
+                                record(f"  ✅ MAX MOMENTUM IN SLOWDEGRADE RANGE! ({max_m_val:.2e})\n")
+                            elif max_m_val > 1.1e19:
+                                record(f"  ⚠️ MAX MOMENTUM TOO LARGE (>{1.1e19}, actual: {max_m_val:.2e})\n")
+                            elif not np.isfinite(max_m_val):
+                                record(f"  💥 MAX MOMENTUM IS INF/NAN!\n")
+                            else:
+                                record(f"  ❌ MAX MOMENTUM BELOW RANGE (<2.6e8, actual: {max_m_val:.2e})\n")
+                        
+                        # Then show filtered important variables
+                        record(f"\nFiltered important variables:\n")
+                        for var_name, m_data in post_injection_momentum.get('m', {}).items():
+                            if var_name.startswith('MAX: '):
+                                record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}\n")
+                            else:
+                                record(f"  {var_name}: mean(|m|)={m_data['mean']:.2e}, max(|m|)={m_data['max']:.2e}, max_signed={m_data.get('max_signed', 0):.2e}\n")
+                            
+                            # Show first 5 values only for non-MAX entries to keep it concise
+                            if not var_name.startswith('MAX: ') and abs(m_data['max']) > 1e-6:
+                                record(f"    First 5 values: {m_data.get('first_5', [])}\n")
                     
                     injection_performed = True
                     
